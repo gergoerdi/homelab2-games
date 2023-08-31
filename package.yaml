@@ -1,0 +1,19 @@
+name: homelab-snake
+version: 0.1.0
+category: game
+license: MIT
+
+extra-source-files:
+  - README.md
+
+dependencies:
+  - base
+  - z80
+  - bytestring
+
+source-dirs:
+  - src
+
+executables:
+  homelab-snake:
+    main: main.hs
