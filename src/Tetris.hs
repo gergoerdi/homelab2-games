@@ -1,6 +1,7 @@
 {-# LANGUAGE NumericUnderscores, BlockArguments, BinaryLiterals #-}
 {-# LANGUAGE RecursiveDo #-}
-module Tetris (tetris) where
+{-# LANGUAGE FlexibleContexts #-}
+module Tetris (tetris, pieces) where
 
 import Z80
 import Data.Word
@@ -9,11 +10,115 @@ import Control.Monad
 import Data.Bits
 import Data.Char
 import Text.Printf
+import Data.Semigroup (stimes)
 
 tetris :: Z80ASM
 tetris = do
     clearScreen
-    drawTetris
+    rec drawTetris lpieces
+        lpieces <- labelled $ db pieces
+    pure ()
+
+padTo :: Int -> a -> [a] -> [a]
+padTo n x0 [] = replicate n x0
+padTo n x0 (x:xs) = x : padTo (n-1) x0 xs
+
+pieces :: [Word8]
+pieces = concatMap (concatMap encode) [t, j, z, o, s, l, i]
+  where
+    normalize :: [String] -> [String]
+    normalize = map (padTo 4 ' ') . padTo 4 ""
+
+    encode :: [String] -> [Word8]
+    encode = map ((`shiftL` 2) . stringToByte) . normalize
+
+    stringToByte :: String -> Word8
+    stringToByte = foldl (\b c -> let b' = b `shiftL` 1 in if c == ' ' then b' else setBit b' 0) 0x00
+
+    t =
+      [ [ "***"
+        , " * "
+        ]
+      , [ " * "
+        , " **"
+        , " * "
+        ]
+      , [ " * "
+        , "***"
+        ]
+      , [ " *"
+        , "**"
+        , " *"
+        ]
+      ]
+
+    j =
+      [ [ "***"
+        , "  *"
+        ]
+      , [ " **"
+        , " * "
+        , " * "
+        ]
+      , [ "*  "
+        , "***"
+        ]
+      , [ " *"
+        , " *"
+        , "**"
+        ]
+      ]
+    l = map (map reverse) j
+
+    z = stimes 2 $
+      [ [ "** "
+        , " **"
+        ]
+      , [ " *"
+        , "**"
+        , "* "
+        ]
+      ]
+    s = map (map reverse) z
+
+    o = stimes 4 $
+      [ [ "**"
+        , "**"
+        ]
+      ]
+
+    i = stimes 2 $
+      [ [ "****"
+        ]
+      , [ "*"
+        , "*"
+        , "*"
+        , "*"
+        ]
+      ]
+
+          -- [ [ [block, block, block, space]
+          --   , [space, block, space, space]
+          --   ]
+          -- , [ [block, block, block, space]
+          --   , [space, space, block, space]
+          --   ]
+          -- , [ [block, block, space, space]
+          --   , [space, block, block, space]
+          --   ]
+          -- , [ [space, block, block, space]
+          --   , [space, block, block, space]
+          --   ]
+          -- , [ [space, block, block, space]
+          --   , [block, block, space, space]
+          --   ]
+          -- , [ [block, block, block, space]
+          --   , [block, space, space, space]
+          --   ]
+          -- , [ [block, block, block, block]
+          --   , [space, space, space, space]
+          --   ]
+          -- ]
 
 videoStart :: Word16
 videoStart = 0xc001
@@ -39,44 +144,20 @@ well = 0xfb
 clearScreen :: Z80ASM
 clearScreen = do
     ld HL videoStart
-    rec loop <- label
-        ld [HL] space
-        inc HL
-        ld A H
-        cp 0xc4
-        jr NZ loop
+    loop <- label
+    ld [HL] space
+    inc HL
+    ld A H
+    cp 0xc4
+    jr NZ loop
     pure ()
 
-drawBorder :: Z80ASM
-drawBorder = do
-    ld HL videoStart
-    decLoopB numCols do
-        ld [HL] wall
-        inc HL
-    ld DE (numCols - 1)
-    decLoopB (numRows - 2) do
-        ld [HL] wall
-        add HL DE
-        ld [HL] wall
-        inc HL
-    decLoopB numCols do
-        ld [HL] wall
-        inc HL
-
-drawSnake :: Z80ASM
-drawSnake = do
-    ld HL (videoStart + 4 * numCols + 10)
-    ld [HL] 0x6e
-    inc HL
-    decLoopB 10 do
-        ld [HL] 0x91
-        inc HL
-    ld [HL] 0x8d
-    ld HL (videoStart + 5 * numCols + 10)
-    ld [HL] 0x90
-
-    ld HL (videoStart + 4 * numCols + 32)
-    ld [HL] 0x75
+unlessFlag :: JumpRelative flag (Location -> Z80ASM) => flag -> Z80ASM -> Z80ASM
+unlessFlag flag body = do
+    rec jr flag end :: Z80ASM
+        body
+        end <- label
+    pure ()
 
 wellWidth :: Num a => a
 wellWidth = 10
@@ -115,19 +196,33 @@ wellEndX = wellStartX + wellWidth + 1
 wellStartY = 3
 wellEndY = wellStartY + wellHeight
 
+frameNW, frameN, frameNE, frameW, frameE, frameSW, frameS, frameSE :: Word8
 frameNW = 0x6e
 frameN  = 0x96
 frameNE = 0x6d
-
-frameW = 0xea
-frameE = 0xeb
-
+frameW  = 0xea
+frameE  = 0xeb
 frameSW = 0x6c
 frameS  = 0x95
 frameSE = 0x6b
 
-drawTetris :: Z80ASM
-drawTetris = do
+drawTetris :: Location -> Z80ASM
+drawTetris pieces = do
+    drawWell
+    drawNext
+    drawLevel
+    drawPieceStats pieces
+    drawLines
+    drawScore
+
+    forM_ (zip [1..] (reverse state)) \(i, x) -> do
+        ld HL $ videoStart + (wellEndY - i) * numCols + wellStartX + 1
+        forM_ (reverse [0..9]) \j -> do
+            ld [HL] $ if x `testBit` j then block else well
+            inc HL
+
+drawWell :: Z80ASM
+drawWell = do
     ld HL $ videoStart + wellStartY * numCols + wellStartX
     ld DE numCols
     decLoopB wellHeight do
@@ -141,18 +236,6 @@ drawTetris = do
     decLoopB (wellWidth + 2) do
         ld [HL] wall
         inc HL
-
-    forM_ (zip [1..] (reverse state)) \(i, x) -> do
-        ld HL $ videoStart + (wellEndY - i) * numCols + wellStartX + 1
-        forM_ (reverse [0..9]) \j -> do
-            ld [HL] $ if x `testBit` j then block else well
-            inc HL
-
-    drawNext
-    drawLevel
-    drawPieceStats
-    drawLines
-    drawScore
 
 drawLines :: Z80ASM
 drawLines = do
@@ -240,8 +323,8 @@ drawLevel = do
         inc HL
     ld [HL] frameSE
 
-drawPieceStats :: Z80ASM
-drawPieceStats = do
+drawPieceStats :: Location -> Z80ASM
+drawPieceStats pieces = do
     ld HL $ videoStart + 0 * numCols + 1
     ld [HL] frameNW
     inc HL
@@ -275,36 +358,31 @@ drawPieceStats = do
         ld [HL] frameE
         add HL DE
 
-    let shapes =
-          [ [ [block, block, block, space]
-            , [space, block, space, space]
-            ]
-          , [ [block, block, block, space]
-            , [space, space, block, space]
-            ]
-          , [ [block, block, space, space]
-            , [space, block, block, space]
-            ]
-          , [ [space, block, block, space]
-            , [space, block, block, space]
-            ]
-          , [ [space, block, block, space]
-            , [block, block, space, space]
-            ]
-          , [ [block, block, block, space]
-            , [block, space, space, space]
-            ]
-          , [ [block, block, block, block]
-            , [space, space, space, space]
-            ]
-          ]
+    forM_ [0..6] \k -> do
+        let base = pieces + k * 4 * 4
+        forM_ [0..3] \row -> do
+            let addr = base + row
+            ld HL $ videoStart + (3 + 3 * k + row) * numCols
+            ld A [addr]
+            rec
+                loopForever do
+                    sla A
+                    rec
+                        jr C drawThis
+                        jr NZ next
+                        jr end
+                        drawThis <- labelled $ ld [HL] block
+                        next <- labelled $ inc HL
+                    pure ()
+                end <- label
+            pure ()
 
-    forM_ (zip [0..] shapes) \ (k, shape) -> do
-        forM_ (zip [0..] shape) \ (i, bs) -> do
-            ld HL $ videoStart + (3 + 3 * k + i) * numCols + 3
-            forM_ bs \b -> do
-                ld [HL] b
-                inc HL
+                -- unlessFlag NC $ ld [HL] block
+                -- inc HL
+                -- cp 0
+                -- jr NZ lab
+                -- pure ()
+
 
 drawNext :: Z80ASM
 drawNext = do
