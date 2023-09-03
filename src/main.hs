@@ -2,24 +2,42 @@
 {-# LANGUAGE RecursiveDo #-}
 module Main where
 
+import Tetris
+
 import Z80
 import Data.Word
 import qualified Data.ByteString as BS
 import Control.Monad
 import Data.Bits
 import Data.Char
+import Text.Printf
 
 main :: IO ()
 main = do
     BS.writeFile "snake.obj" $ asmData block
   where
-    block = org 0x50_00 do
-        clearScreen
-        drawTetris
+    block = org 20000 do
+        -- booter
+        tetris
         -- drawBorder
         -- drawSnake
         _ <- loopForever $ pure ()
         pure ()
+
+labelASCII :: Location -> [Word8]
+labelASCII loc = map (+ 0x30) $ digits
+  where
+    -- The length of this has to be lazy in the actual value of `loc`
+    digits = [fromIntegral $ (loc `div` (10 ^ i)) `mod` 10 | i <- [4, 3 .. 0]]
+
+booter :: Z80ASM
+booter = do
+    db [0x00, 0x00, 0xad] -- 0 CALL
+    rec
+        db $ labelASCII start
+        db [0x60, 0x7f, 0xff, 0x91, 0x3a]
+        start <- label
+    pure ()
 
 videoStart :: Word16
 videoStart = 0xc001
@@ -32,15 +50,11 @@ numRows = 25
 
 space :: Word8
 space = 0x20
--- space = 0xfb
+-- -- space = 0xfb
 
 wall :: Word8
--- wall = 0xfb
-wall = 0xa0
-
-well :: Word8
-well = 0xfb
--- well = space
+wall = 0xfb
+-- -- wall = 0xa0
 
 clearScreen :: Z80ASM
 clearScreen = do
@@ -83,261 +97,3 @@ drawSnake = do
 
     ld HL (videoStart + 4 * numCols + 32)
     ld [HL] 0x75
-
-wellWidth :: Num a => a
-wellWidth = 10
-
-wellHeight :: Num a => a
-wellHeight = 20
-
-block :: Word8
-block = 0x77
-
-state :: [Word16]
-state = [ 0b00000_00000
-        , 0b00000_00000
-        , 0b00000_00000
-        , 0b00011_00000
-        , 0b00001_10000
-        , 0b00000_00000
-        , 0b00000_00000
-        , 0b00000_00000
-        , 0b00000_00000
-        , 0b00000_00000
-        , 0b00000_00000
-        , 0b00000_00000
-        , 0b00000_00000
-        , 0b00000_00000
-        , 0b00000_00000
-        , 0b00000_00000
-        , 0b00011_11000
-        , 0b01001_11100
-        , 0b11111_11100
-        , 0b11111_11110
-        ]
-
-wellStartX = (numCols - (wellWidth + 2)) `div` 2
-wellEndX = wellStartX + wellWidth + 1
-wellStartY = 3
-wellEndY = wellStartY + wellHeight
-
-
-drawTetris :: Z80ASM
-drawTetris = do
-    ld HL $ videoStart + wellStartY * numCols + wellStartX
-    ld DE numCols
-    decLoopB wellHeight do
-        ld [HL] wall
-        add HL DE
-    ld HL $ videoStart + wellStartY * numCols + wellEndX
-    decLoopB wellHeight do
-        ld [HL] wall
-        add HL DE
-    ld HL $ videoStart + wellEndY * numCols + wellStartX
-    decLoopB (wellWidth + 2) do
-        ld [HL] wall
-        inc HL
-
-    forM_ (zip [1..] (reverse state)) \(i, x) -> do
-        ld HL $ videoStart + (wellEndY - i) * numCols + wellStartX + 1
-        forM_ (reverse [0..9]) \j -> do
-            ld [HL] $ if x `testBit` j then block else well
-            inc HL
-
-    ld HL $ videoStart + 11 * numCols + wellEndX + 4
-    ld [HL] 0x6e
-    inc HL
-    replicateM_ 5 do
-        ld [HL] 0x96
-        inc HL
-    ld [HL] 0x6d
-
-
-    ld HL $ videoStart + 12 * numCols + wellEndX + 4
-    ld [HL] 0xea
-    inc HL
-    forM_ "NEXT:" \c -> do
-        ld [HL] $ fromIntegral $ ord c
-        inc HL
-    ld [HL] 0xeb
-
-    ld HL $ videoStart + 13 * numCols + wellEndX + 4
-    ld [HL] 0xea
-    ld HL $ videoStart + 13 * numCols + wellEndX + 4 + 6
-    ld [HL] 0xeb
-
-    ld HL $ videoStart + 14 * numCols + wellEndX + 4
-    ld [HL] 0xea
-    inc HL
-    inc HL
-    forM_ [block, block, block, space] \b -> do
-        ld [HL] b
-        inc HL
-    ld [HL] 0xeb
-
-    ld HL $ videoStart + 15 * numCols + wellEndX + 4
-    ld [HL] 0xea
-    inc HL
-    inc HL
-    forM_ [space, space, block, space] \b -> do
-        ld [HL] b
-        inc HL
-    ld [HL] 0xeb
-
-    ld HL $ videoStart + 16 * numCols + wellEndX + 4
-    ld [HL] 0x6c
-    inc HL
-    replicateM_ 5 do
-        ld [HL] 0x95
-        inc HL
-    ld [HL] 0x6b
-
-
-    ld HL $ videoStart + 1 * numCols + wellEndX
-    ld [HL] 0xea
-    ld HL $ videoStart + 1 * numCols + wellStartX
-    ld [HL] 0xeb
-    inc HL
-    forM_ "LINES: 014" \c -> do
-        ld [HL] $ fromIntegral $ ord c
-        inc HL
-
-    ld HL $ videoStart + 0 * numCols + wellStartX
-    ld [HL] 0x6e
-    inc HL
-    replicateM_ wellWidth $ do
-        ld [HL] 0x96
-        inc HL
-    ld [HL] 0x6d
-
-    ld HL $ videoStart + 2 * numCols + wellStartX
-    ld [HL] 0x6c
-    inc HL
-    replicateM_ wellWidth $ do
-        ld [HL] 0x95
-        inc HL
-    ld [HL] 0x6b
-
-
-
-    ld HL $ videoStart + 3 * numCols + wellEndX + 3
-    ld [HL] 0x6e
-    inc HL
-    replicateM_ 8 do
-        ld [HL] 0x96
-        inc HL
-    ld [HL] 0x6d
-
-    ld HL $ videoStart + 4 * numCols + wellEndX + 3
-    ld [HL] 0xea
-    inc HL
-    forM_ "SCORE:  " \c -> do
-        ld [HL] $ fromIntegral $ ord c
-        inc HL
-    ld [HL] 0xeb
-
-    ld HL $ videoStart + 5 * numCols + wellEndX + 3
-    ld [HL] 0xea
-    inc HL
-    forM_ "00000000" \c -> do
-        ld [HL] $ fromIntegral $ ord c
-        inc HL
-    ld [HL] 0xeb
-    ld HL $ videoStart + 6 * numCols + wellEndX + 3
-    ld [HL] 0x6c
-    inc HL
-    replicateM_ 8 do
-        ld [HL] 0x95
-        inc HL
-    ld [HL] 0x6b
-
-
-
-    ld HL $ videoStart + 21 * numCols + wellEndX + 2
-    ld [HL] 0x6e
-    inc HL
-    replicateM_ 9 do
-        ld [HL] 0x96
-        inc HL
-    ld [HL] 0x6d
-
-    ld HL $ videoStart + 22 * numCols + wellEndX + 2
-    ld [HL] 0xea
-    inc HL
-    forM_ "LEVEL: 09" \c -> do
-        ld [HL] $ fromIntegral $ ord c
-        inc HL
-    ld [HL] 0xeb
-
-    ld HL $ videoStart + 23 * numCols + wellEndX + 2
-    ld [HL] 0x6c
-    inc HL
-    replicateM_ 9 do
-        ld [HL] 0x95
-        inc HL
-    ld [HL] 0x6b
-
-
-    ld HL $ videoStart + 0 * numCols + 1
-    ld [HL] 0x6e
-    inc HL
-    replicateM_ 10 do
-        ld [HL] 0x96
-        inc HL
-    ld [HL] 0x6d
-    ld HL $ videoStart + 23 * numCols + 1
-    ld [HL] 0x6c
-    inc HL
-    replicateM_ 10 do
-        ld [HL] 0x95
-        inc HL
-    ld [HL] 0x6b
-
-    ld HL $ videoStart + 1 * numCols + 1
-    ld [HL] 0xea
-    inc HL
-    forM_ "STATISTICS" \c -> do
-        ld [HL] $ fromIntegral $ ord c
-        inc HL
-    ld [HL] 0xeb
-
-    ld DE numCols
-    ld HL $ videoStart + 2 * numCols + 1
-    decLoopB 21 do
-        ld [HL] 0xea
-        add HL DE
-    ld HL $ videoStart + 2 * numCols + 1 + 11
-    decLoopB 21 do
-        ld [HL] 0xeb
-        add HL DE
-
-    let shapes =
-          [ [ [block, block, block, space]
-            , [space, block, space, space]
-            ]
-          , [ [block, block, block, space]
-            , [space, space, block, space]
-            ]
-          , [ [block, block, space, space]
-            , [space, block, block, space]
-            ]
-          , [ [space, block, block, space]
-            , [space, block, block, space]
-            ]
-          , [ [space, block, block, space]
-            , [block, block, space, space]
-            ]
-          , [ [block, block, block, space]
-            , [block, space, space, space]
-            ]
-          , [ [block, block, block, block]
-            , [space, space, space, space]
-            ]
-          ]
-
-    forM_ (zip [0..] shapes) \ (k, shape) -> do
-        forM_ (zip [0..] shape) \ (i, bs) -> do
-            ld HL $ videoStart + (3 + 3 * k + i) * numCols + 3
-            forM_ bs \b -> do
-                ld [HL] b
-                inc HL
