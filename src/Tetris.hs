@@ -10,7 +10,12 @@ import Data.Semigroup (stimes)
 
 data Locations = MkLocs
   { pieces :: Location
-  , state :: Location
+  , wellContents :: Location
+  , currentPiece, currentRot, currentPos :: Location
+  , pieceBuf :: Location
+  , lineBuf :: Location
+  , fallHeight :: Location
+  , delay :: Location
   }
 
 padTo :: Int -> a -> [a] -> [a]
@@ -35,7 +40,7 @@ allPieces = concatMap (concatMap encode) [t, j, z, o, s, l, i]
     normalize = map (padTo 4 ' ') . padTo 4 ""
 
     encode :: [String] -> [Word16]
-    encode = map ((`shiftL` 10) . stringToByte) . normalize
+    encode = map ((`shiftL` 8) . stringToByte) . normalize
 
     stringToByte :: String -> Word16
     stringToByte = foldl (\w c -> let w' = w `shiftL` 1 in if c == ' ' then w' else setBit w' 0) 0x00

@@ -80,10 +80,40 @@ drawSkeleton MkLocs{..} = do
     drawScore
 
 drawTetris :: Locations -> Z80ASM
-drawTetris MkLocs{..} = do
+drawTetris locs@MkLocs{..} = do
     drawWell
+    drawFallingPiece locs
     ld HL $ videoStart + wellStartY * numCols + wellStartX + 1
-    drawLines state wellHeight
+    drawLinesFrom wellContents wellHeight
+
+drawFallingPiece :: Locations -> Z80ASM
+drawFallingPiece locs@MkLocs{..} = do
+    ld HL $ videoStart + (wellStartY - 1) * numCols + wellStartX + 1
+    ld DE numCols
+    ldVia A B [fallHeight]
+    withLabel \loop -> do
+        add HL DE
+        djnz loop
+    exx
+    -- loadFallingPiece locs
+    ld HL pieceBuf
+    exx
+    drawLines 4
+
+-- | Post: 'HL' contains address of first line of current falling piece
+loadFallingPiece :: Locations -> Z80ASM
+loadFallingPiece MkLocs{..} = do
+    ld D 0
+    ld HL pieces
+    ld A [currentPiece]
+    replicateM_ 5 rlca
+    ld E A
+    add HL DE
+    ld A [currentRot]
+    replicateM_ 3 rlca
+    ld E A
+    add HL DE
+
 
 drawWell :: Z80ASM
 drawWell = do
@@ -230,9 +260,9 @@ drawPieceStats pieces = do
         add HL DE
 
     forM_ [0..6] \k -> do
-        ld HL $ videoStart + (3 + 3 * k) * numCols + 1
+        ld HL $ videoStart + (3 + 3 * k) * numCols - 1
         let base = pieces + k * 4 * 4 * 2
-        drawLines base 4
+        drawLinesFrom base 4
 
 drawLine :: Z80ASM
 drawLine = do
@@ -244,11 +274,20 @@ drawLine = do
         unlessFlag NC $ ld [HL] A
         inc HL
 
-drawLines :: Location -> Word8 -> Z80ASM
-drawLines from n = do
-    ld A block
+-- | `HL`: topmost line's start
+drawLinesFrom :: Location -> Word8 -> Z80ASM
+drawLinesFrom from n = do
     exx
     ld HL from
+    exx
+    drawLines n
+
+-- | `HL`: topmost line's start
+-- | `HL'`: address of piece data
+drawLines :: Word8 -> Z80ASM
+drawLines n = do
+    ld A block
+    exx
     decLoopB n do
         ld D [HL]
         inc HL
