@@ -2,7 +2,7 @@
 {-# LANGUAGE RecursiveDo #-}
 module Main where
 
-import Tetris
+import Tetris.Main
 
 import Z80
 import Data.Word
