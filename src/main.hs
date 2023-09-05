@@ -3,6 +3,7 @@
 module Main where
 
 import Tetris.Main
+import Snake.Main
 
 import Z80
 import Data.Word
@@ -18,9 +19,8 @@ main = do
   where
     block = org 20000 do
         -- booter
-        tetris
-        -- drawBorder
-        -- drawSnake
+        -- tetris
+        snake
         _ <- loopForever $ pure ()
         pure ()
 
@@ -38,62 +38,3 @@ booter = do
         db [0x60, 0x7f, 0xff, 0x91, 0x3a]
         start <- label
     pure ()
-
-videoStart :: Word16
-videoStart = 0xc001
-
-numCols :: (Num a) => a
-numCols = 40
-
-numRows :: (Num a) => a
-numRows = 25
-
-space :: Word8
-space = 0x20
--- -- space = 0xfb
-
-wall :: Word8
-wall = 0xfb
--- -- wall = 0xa0
-
-clearScreen :: Z80ASM
-clearScreen = do
-    ld HL videoStart
-    rec loop <- label
-        ld [HL] space
-        inc HL
-        ld A H
-        cp 0xc4
-        jr NZ loop
-    pure ()
-
-drawBorder :: Z80ASM
-drawBorder = do
-    ld HL videoStart
-    decLoopB numCols do
-        ld [HL] wall
-        inc HL
-    ld DE (numCols - 1)
-    decLoopB (numRows - 2) do
-        ld [HL] wall
-        add HL DE
-        ld [HL] wall
-        inc HL
-    decLoopB numCols do
-        ld [HL] wall
-        inc HL
-
-drawSnake :: Z80ASM
-drawSnake = do
-    ld HL (videoStart + 4 * numCols + 10)
-    ld [HL] 0x6e
-    inc HL
-    decLoopB 10 do
-        ld [HL] 0x91
-        inc HL
-    ld [HL] 0x8d
-    ld HL (videoStart + 5 * numCols + 10)
-    ld [HL] 0x90
-
-    ld HL (videoStart + 4 * numCols + 32)
-    ld [HL] 0x75
