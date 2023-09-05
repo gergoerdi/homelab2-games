@@ -15,7 +15,7 @@ data Locations = MkLocs
   , pieceBuf :: Location
   , lineBuf :: Location
   , fallHeight :: Location
-  , delay :: Location
+  , delay, levelDelay :: Location
   }
 
 padTo :: Int -> a -> [a] -> [a]

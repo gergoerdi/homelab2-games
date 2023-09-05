@@ -15,23 +15,15 @@ tetris :: Z80ASM
 tetris = do
     clearScreen
     rec
-        -- drawSkeleton locs
+        drawSkeleton locs
 
         -- drawTetris locs
         -- loopForever $ pure ()
 
         loopForever do
             waitFrame
-            -- ld A [delay]
-            -- dec A
-            -- ld [delay] A
-            rec
-                -- jp NZ wait
-                updateState locs
-                ldVia A [delay] 60
-                drawTetris locs
-                wait <- label
-            pure ()
+            updateState locs
+            drawTetris locs
         pieces <- labelled $ dw allPieces
         dw [0, 0]
         wellContents <- labelled $ dw testState -- $ map (`shiftL` 4) $ replicate wellHeight 0b1_00000_00000_1 ++ [0b1_11111_11111_1]
@@ -41,7 +33,8 @@ tetris = do
         pieceBuf <- labelled $ dw $ take (4 * 2) allPieces
         lineBuf <- labelled $ dw [0]
         fallHeight <- labelled $ db [0]
-        delay <- labelled $ db [60]
+        delay <- labelled $ db [15]
+        levelDelay <- labelled $ db [15]
         let locs = MkLocs{..}
 
     pure ()
@@ -54,18 +47,21 @@ skippable body = do
     pure ()
 
 updateState :: Locations -> Z80ASM
-updateState locs@MkLocs{..} = do
+updateState locs@MkLocs{..} = skippable \done -> do
     rec
         checkCollision collided
-        gravity
         readInput
+        ld A [delay]
+        dec A
+        ld [delay] A
+        jp NZ done
+        ldVia A [delay] [levelDelay]
+        gravity
         jp done
         collided <- labelled do
             commitPiece
-            -- removeFullLines
-            -- newPiece
-            pure ()
-        done <- label
+            removeFullLines
+            newPiece
     pure ()
   where
     readInput = skippable \end -> do
@@ -241,11 +237,7 @@ updateState locs@MkLocs{..} = do
 
 waitFrame :: Z80ASM
 waitFrame = do
-    -- pure ()
-    -- replicateM_ 200 $ ld [0x3f3f] A
-    ld [0x3f00] A
     halt
-    ld [0x3e00] A
 
 testState :: [Word16]
 testState = map (`shiftL` 4) $
@@ -268,6 +260,6 @@ testState = map (`shiftL` 4) $
   , 0b1_00011_11000_1
   , 0b1_01001_11100_1
   , 0b1_11111_11100_1
-  , 0b1_11111_11111_1
+  , 0b1_11111_11110_1
   , 0b1_11111_11111_1
   ]

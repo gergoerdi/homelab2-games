@@ -73,18 +73,18 @@ frameSE = 0x6b
 
 drawSkeleton :: Locations -> Z80ASM
 drawSkeleton MkLocs{..} = do
-    drawNext
-    drawLevel
-    drawPieceStats pieces
-    drawLineCount
-    drawScore
+    -- drawNext
+    -- drawLevel
+    -- drawPieceStats pieces
+    -- drawLineCount
+    -- drawScore
+    drawWell
 
 drawTetris :: Locations -> Z80ASM
 drawTetris locs@MkLocs{..} = do
-    drawWell
-    drawFallingPiece locs
     ld HL $ videoStart + wellStartY * numCols + wellStartX + 1
-    drawLinesFrom wellContents wellHeight
+    drawLinesFrom wellContents True wellHeight
+    drawFallingPiece locs
 
 drawFallingPiece :: Locations -> Z80ASM
 drawFallingPiece locs@MkLocs{..} = do
@@ -98,7 +98,7 @@ drawFallingPiece locs@MkLocs{..} = do
     -- loadFallingPiece locs
     ld HL pieceBuf
     exx
-    drawLines 4
+    drawLines False 4
 
 -- | Post: 'HL' contains address of first line of current falling piece
 loadFallingPiece :: Locations -> Z80ASM
@@ -262,30 +262,31 @@ drawPieceStats pieces = do
     forM_ [0..6] \k -> do
         ld HL $ videoStart + (3 + 3 * k) * numCols - 1
         let base = pieces + k * 4 * 4 * 2
-        drawLinesFrom base 4
+        drawLinesFrom base False 4
 
-drawLine :: Z80ASM
-drawLine = do
+drawLine :: Bool -> Z80ASM
+drawLine bg = do
     sla D
     rl E
     decLoopB wellWidth do
         sla D
         rl E
+        when bg $ ld [HL] well
         unlessFlag NC $ ld [HL] A
         inc HL
 
 -- | `HL`: topmost line's start
-drawLinesFrom :: Location -> Word8 -> Z80ASM
-drawLinesFrom from n = do
+drawLinesFrom :: Location -> Bool -> Word8 -> Z80ASM
+drawLinesFrom from bg n = do
     exx
     ld HL from
     exx
-    drawLines n
+    drawLines bg n
 
 -- | `HL`: topmost line's start
 -- | `HL'`: address of piece data
-drawLines :: Word8 -> Z80ASM
-drawLines n = do
+drawLines :: Bool -> Word8 -> Z80ASM
+drawLines bg n = do
     ld A block
     exx
     decLoopB n do
@@ -296,7 +297,7 @@ drawLines n = do
         push DE
         exx
         pop DE
-        drawLine
+        drawLine bg
         ld DE (numCols - wellWidth)
         add HL DE
         exx
