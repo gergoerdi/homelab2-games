@@ -62,8 +62,8 @@ updateState locs@MkLocs{..} = do
         jp done
         collided <- labelled do
             commitPiece
-            removeFullLines
-            newPiece
+            -- removeFullLines
+            -- newPiece
             pure ()
         done <- label
     pure ()
@@ -76,6 +76,7 @@ updateState locs@MkLocs{..} = do
             jr NC moveLeft
             -- Check "i"
             rra
+            -- jr NC rotate -- TODO
             -- Check "j"
             rra
             -- jr NC moveDown -- TODO
@@ -240,8 +241,11 @@ updateState locs@MkLocs{..} = do
 
 waitFrame :: Z80ASM
 waitFrame = do
-    pure ()
-    replicateM_ 200 $ ld [0x3f3f] A
+    -- pure ()
+    -- replicateM_ 200 $ ld [0x3f3f] A
+    ld [0x3f00] A
+    halt
+    ld [0x3e00] A
 
 testState :: [Word16]
 testState = map (`shiftL` 4) $
