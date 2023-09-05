@@ -34,16 +34,18 @@ wall = 0xfb
 
 snake :: Z80ASM
 snake = do
-    clearScreen
-    drawBorder
     rec
+        let locs = MkLocs{..}
+        clearScreen
+        drawBorder
         drawSnake locs
+        loopForever $ pure ()
+
         tailIdx <- labelled $ db [0]
-        headIdx <- labelled $ db [5]
+        headIdx <- labelled $ db [6]
         segmentLo <- labelled $ db $ take 256 $ [100, 60, 61, 62, 63, 64, 110, 120] ++ repeat 0
         segmentHi <- labelled $ db $ take 256 $ repeat 0
         segmentChar <- labelled $ db $ take 256 $ [bodyNS, bodySE, bodyEW, bodyEW, bodyEW, headE] ++ repeat 0
-        let locs = MkLocs{..}
     pure ()
 
 clearScreen :: Z80ASM
@@ -83,38 +85,30 @@ headE = 0x8d
 
 drawSnake :: Locations -> Z80ASM
 drawSnake MkLocs{..} = do
+    ld B 0
     ldVia A C [tailIdx]
-    ldVia A B [headIdx]
+    ld A [headIdx]
 
     withLabel \loop -> do
-        -- Copy (0, C) to BC'
-        push BC
-        exx
-        pop BC
-        ld B 0
-        exx
-
         -- Set HL to target video address
-        loadArrayBC' D segmentHi
-        loadArrayBC' E segmentLo
+        loadArray E segmentLo BC
+        loadArray D segmentHi BC
         ld HL videoStart
         add HL DE
 
         -- Draw segment
-        loadArrayBC' A segmentChar
-        ld [HL] A
+        loadArray D segmentChar BC
+        ld [HL] D
 
-        ld A C
-        cp B
+        -- Compare iterator C with head A
         inc C
+        cp C
         jp NZ loop
 
--- | Pre: `BC'` contains the index
+-- | Pre: `BC` contains the index
 -- | Post: `target` contains the value at `(base + index)`
-loadArrayBC' :: (Load r [RegIx]) => r -> Location -> Z80ASM
-loadArrayBC' target base = do
+loadArray :: (Load r [RegIx], Arithmetic RegIx r') => r -> Location -> r' -> Z80ASM
+loadArray target base idx = do
     ld IX base
-    exx
-    add IX BC
-    exx
+    add IX idx
     ld target [IX]
