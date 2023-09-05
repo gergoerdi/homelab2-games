@@ -33,7 +33,7 @@ tetris = do
         pieceBuf <- labelled $ dw $ take (4 * 2) allPieces
         lineBuf <- labelled $ dw [0]
         fallHeight <- labelled $ db [0]
-        delay <- labelled $ db [15]
+        delay <- labelled $ db [1]
         levelDelay <- labelled $ db [15]
         let locs = MkLocs{..}
 
@@ -49,13 +49,13 @@ skippable body = do
 updateState :: Locations -> Z80ASM
 updateState locs@MkLocs{..} = skippable \done -> do
     rec
-        checkCollision collided
         readInput
         ld A [delay]
         dec A
         ld [delay] A
         jp NZ done
         ldVia A [delay] [levelDelay]
+        checkCollision collided
         gravity
         jp done
         collided <- labelled do
@@ -82,17 +82,17 @@ updateState locs@MkLocs{..} = skippable \done -> do
             jp end
 
             moveLeft <- labelled do
-                let withShiftedPiece :: (Load r [HL], RotateShift r) => r -> Z80ASM -> Z80ASM
+                let withShiftedPiece :: (Load r [HL], RotateShift r) => r -> (Bool -> Z80ASM) -> Z80ASM
                     withShiftedPiece r body = do
                         ld HL pieceBuf
                         decLoopB 4 do
                             ld r [HL]
                             sla r
-                            body
+                            body False
                             inc HL
                             ld r [HL]
                             rl r
-                            body
+                            body True
                             inc HL
 
                 -- Set up DE to point to falling piece's line in the well
@@ -102,27 +102,28 @@ updateState locs@MkLocs{..} = skippable \done -> do
                     replicateM_ 2 $ inc DE
                     djnz loop
 
-                withShiftedPiece C do
+                withShiftedPiece C \second -> do
+                    when second $ jp C end
                     ld A [DE]
                     inc DE
                     Z80.and C
                     jp NZ end
-                withShiftedPiece A do
+                withShiftedPiece A \_ -> do
                     ld [HL] A
                 jp end
 
             moveRight <- labelled do
-                let withShiftedPiece :: (Load r [HL], RotateShift r) => r -> Z80ASM -> Z80ASM
+                let withShiftedPiece :: (Load r [HL], RotateShift r) => r -> (Bool -> Z80ASM) -> Z80ASM
                     withShiftedPiece r body = do
                         ld HL (pieceBuf + 7)
                         decLoopB 4 do
                             ld r [HL]
                             sra r
-                            body
+                            body False
                             dec HL
                             ld r [HL]
                             rr r
-                            body
+                            body True
                             dec HL
 
                 -- Set up DE to point to falling piece's line in the well
@@ -132,12 +133,16 @@ updateState locs@MkLocs{..} = skippable \done -> do
                     replicateM_ 2 $ inc DE
                     djnz loop
 
-                withShiftedPiece C do
+                withShiftedPiece C \second -> do
+                    when second $ do
+                        ld A C
+                        Z80.and 0x0f
+                        jp NZ end
                     ld A [DE]
                     dec DE
                     Z80.and C
                     jp NZ end
-                withShiftedPiece A do
+                withShiftedPiece A \_ -> do
                     ld [HL] A
         pure ()
 
@@ -150,7 +155,7 @@ updateState locs@MkLocs{..} = skippable \done -> do
         ld HL pieceBuf
         ld DE wellContents
         ldVia A B [fallHeight]
-        inc B
+        inc B -- We want to check the row just *below* the piece
         withLabel \loop -> do
             replicateM_ 2 $ inc DE
             djnz loop

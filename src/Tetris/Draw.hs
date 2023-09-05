@@ -88,7 +88,7 @@ drawTetris locs@MkLocs{..} = do
 
 drawFallingPiece :: Locations -> Z80ASM
 drawFallingPiece locs@MkLocs{..} = do
-    ld HL $ videoStart + (wellStartY - 1) * numCols + wellStartX + 1
+    ld HL $ videoStart + wellStartY * numCols + wellStartX + 1
     ld DE numCols
     ldVia A B [fallHeight]
     withLabel \loop -> do
