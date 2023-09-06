@@ -56,21 +56,12 @@ snake = do
         slitherF <- labelled $ slither locs
         latchInputF <- labelled $ latchInput locs
 
-        tailIdx <- labelled $ db [240]
-        headIdx <- labelled $ db [250]
+        tailIdx <- labelled $ db [0]
+        headIdx <- labelled $ db [10]
         newHead <- labelled $ db [0]
-        segmentLo <- labelled $ db $ take 256 $
-          [0..]
-          -- [100, 60, 61, 62, 63, 64, 110, 120] ++ repeat 0
-        segmentHi <- labelled $ db $ take 256 $
-          replicate 100 0xc1 ++
-          repeat 0xc0
-        segmentChar <- labelled $ db $ take 256 $
-          -- repeat bodyEW
-          replicate 250 bodyEW ++ [headE] ++
-          repeat bodyEW
-          -- [bodyNS, bodySE, bodyEW, bodyEW, bodyEW, headE, 0x12, 0x34] ++ repeat 0
-
+        segmentLo <- labelled $ db $ take 256 $ [0..]
+        segmentHi <- labelled $ db $ take 256 $ repeat 0xc1
+        segmentChar <- labelled $ db $ take 256 $ replicate 10 bodyEW ++ [headE] ++ repeat 0
         bodyDispatchTrampoline <- labelled $ db [0xc3] -- JP
         bodyDispatch <- labelled $ dw [0]
 
@@ -114,10 +105,14 @@ bodySW = 0x6d
 bodyNW = 0x6b
 
 headS, headW, headN, headE :: Word8
-headS = 0x8a
-headW = 0x8b
-headN = 0x8c
-headE = 0x8d
+-- headS = 0x1c
+-- headW = 0x1a
+-- headN = 0x1d
+-- headE = 0x1b
+headS = 0x71
+headN = 0x72
+headE = 0x70
+headW = 0x6f
 
 -- Pre: `DE` is the movement vector
 -- Pre: `[bodyDispatch]` transforms `A` from current head to new body
