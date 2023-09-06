@@ -51,7 +51,7 @@ snake = do
                 halt
                 call latchInputF
             ldVia A [currentDir] [lastInput]
-            readInput locs
+            move locs
 
         slitherF <- labelled $ slither locs
         latchInputF <- labelled $ latchInput locs
@@ -116,27 +116,41 @@ headW = 0x6f
 
 -- Pre: `DE` is the movement vector
 -- Pre: `[bodyDispatch]` transforms `A` from current head to new body
+-- Post: `NZ` iff collision occurred
 slither :: Locations -> Z80ASM
 slither MkLocs{..} = do
     ld B 0
 
+    checkCollision
+
     ldVia A C [tailIdx]
     eraseTail
-    bumpTail
 
     ldVia A C [headIdx]
-
     replaceOldHead
     fillNewHead
     bumpHead
+
+    -- Clear `NZ` if there was no collision
+    Z80.xor A
     ret
   where
+    checkCollision = do
+        ldVia A C [headIdx]
+        loadArray H (segmentHi, BC)
+        loadArray L (segmentLo, BC)
+        add HL DE
+
+        -- Check collision
+        ld A [HL]
+        cp space
+        ret NZ
+
     eraseTail = do
         loadArray H (segmentHi, BC)
         loadArray L (segmentLo, BC)
         ld [HL] space
 
-    bumpTail = do
         inc A
         ld HL tailIdx
         ld [HL] A
@@ -147,7 +161,6 @@ slither MkLocs{..} = do
 
     replaceOldHead = do
         loadArray A (segmentChar, BC)
-
         call bodyDispatchTrampoline
         writeArray (segmentChar, BC) A
 
@@ -159,6 +172,8 @@ slither MkLocs{..} = do
     fillNewHead = do
         -- New segment location: head + direction offset
         add HL DE
+
+        -- Record new segment
         inc C
         writeArray (segmentHi, BC) H
         writeArray (segmentLo, BC) L
@@ -264,8 +279,8 @@ latchInput MkLocs{..} = do
             ldVia A [lastInput] B
     ret
 
-readInput :: Locations -> Z80ASM
-readInput locs@MkLocs{..} = skippable $ \end -> do
+move :: Locations -> Z80ASM
+move locs@MkLocs{..} = skippable $ \end -> do
     ld A [lastInput]
     rec
         -- Check "i"
@@ -318,5 +333,7 @@ readInput locs@MkLocs{..} = skippable $ \end -> do
 
         move <- labelled do
             call slitherF
+            jp Z end
+            loopForever $ pure ()
 
     pure ()
