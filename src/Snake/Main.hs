@@ -18,7 +18,7 @@ data Locations = MkLocs
   , newHead :: Location
   , bodyDispatchTrampoline :: Location
   , bodyDispatch :: Location
-  , slitherF :: Location
+  , slitherF, lfsr11F :: Location
   , lastInput, currentDir :: Location
   }
 
@@ -46,6 +46,7 @@ snake = do
         clearScreen
         drawBorder
         loopForever do
+            drawBorder
             initState locs
             drawSnake locs
             withLabel \loop -> do
@@ -59,6 +60,7 @@ snake = do
 
         slitherF <- labelled $ slither locs
         latchInputF <- labelled $ latchInput locs
+        lfsr11F <- labelled $ lfsr11
 
         bodyDispatchTrampoline <- labelled $ do
             ld HL [bodyDispatch]
@@ -85,7 +87,7 @@ clearScreen = do
         inc HL
         ld A H
         cp 0xc4
-        jr NZ loop
+        jp NZ loop
     pure ()
 
 initState :: Locations -> Z80ASM
@@ -109,6 +111,20 @@ initState MkLocs{..} = do
         inc IY
     ldVia A [segmentChar + 10] headE
 
+-- | A 11-bit maximal LFSR
+-- | Pre: DE is the current state
+lfsr11 :: Z80ASM
+lfsr11 = do
+    srl D
+    rr E
+    skippable \skip -> do
+        jp NC skip
+        ld A D
+        Z80.xor 0x05
+        ld D A
+    ret
+
+
 gameOver :: Locations -> Z80ASM
 gameOver MkLocs{..} = skippable \end -> do
     rec
@@ -119,39 +135,136 @@ gameOver MkLocs{..} = skippable \end -> do
         call fill
         jp end
 
-        fill <- labelled $ do
-            ld HL (videoStart + 41)
-            decLoopB 23 do
-                push HL
+        fill <- labelled do
+            -- ld HL (videoStart + 41)
+            -- decLoopB 23 do
+            --     push HL
+            --     exx
+            --     pop HL
+            --     decLoopB 38 do
+            --         ld [HL] A
+            --         inc HL
+            --     inc HL
+            --     inc HL
+            --     push HL
+            --     exx
+            --     pop HL
+            --     replicateM_ 2 halt
+            -- ret
+            ld DE 1
+            exx
+            ld C A
+            exx
+            decLoopB 8 do
+                push DE
                 exx
-                pop HL
-                decLoopB 38 do
-                    ld [HL] A
-                    inc HL
-                inc HL
-                inc HL
-                push HL
+                pop DE
+                decLoopB 0x100 $ skippable \skip -> do
+                    call lfsr11F
+
+                    ld A D
+                    Z80.and 0x03
+                    Z80.or 0xc0
+                    ld H A
+                    ld L E
+
+                    -- Skip top border
+                    skippable \notTop -> do
+                        ld A H
+                        cp 0xc0
+                        jp NZ notTop
+                        ld A L
+                        cp (numCols + 1)
+                        jp C skip
+
+                    -- Skip bottom border
+                    skippable \notBottom -> do
+                        ld A H
+                        cp 0xc3
+                        jp NZ notBottom
+                        ld A L
+                        cp $ fromIntegral $ ((numRows - 1) * numCols + 1) `mod` 256
+                        jp NC skip
+
+                    -- Skip vertical borders: keep subtracting numCols until we get 0 or -1
+                    push HL
+                    push DE
+                    ld DE (negate numCols)
+                    withLabel \loop -> do
+                        rec
+                            ld A H
+                            cp 0xc0
+                            jp NZ next
+                            ld A L
+                            cp numCols
+                            jp Z skipThis
+                            jp NC next
+                            cp 0x01
+                            jp Z skipThis
+                            jp draw
+
+                            next <- label
+                            add HL DE
+                            jp loop
+
+                            draw <- label
+                            pop DE
+                            pop HL
+                            ldVia A [HL] C
+                            jp done
+
+                            skipThis <- label
+                            pop DE
+                            pop HL
+
+                            done <- label
+                        pure ()
+                    -- pop DE
+                    -- pop HL
+
+                    -- ld IX videoStart
+                    -- ld IY (numCols - 1)
+                    -- ld A numRows
+                    -- withLabel \loop -> do
+                    --     -- If IX
+                    --     add IX IY
+
+                    --     dec A
+                    --     jp NZ loop
+
+                    -- ldVia A [HL] C
+
+                push DE
                 exx
-                pop HL
-                replicateM_ 2 halt
+                pop DE
             ret
     pure ()
 
 drawBorder :: Z80ASM
 drawBorder = do
-    ld HL videoStart
+    drawBorderH
+    drawBorderV
+
+drawBorderH :: Z80ASM
+drawBorderH = do
+    ld IX videoStart
     decLoopB numCols do
-        ld [HL] wall
-        inc HL
+        ld [IX] wall
+        inc IX
+    ld IX (videoStart + (numRows - 1) * numCols)
+    decLoopB numCols do
+        ld [IX] wall
+        inc IX
+
+drawBorderV :: Z80ASM
+drawBorderV = do
+    ld IX (videoStart + numCols)
     ld DE (numCols - 1)
     decLoopB (numRows - 2) do
-        ld [HL] wall
-        add HL DE
-        ld [HL] wall
-        inc HL
-    decLoopB numCols do
-        ld [HL] wall
-        inc HL
+        ld [IX] wall
+        add IX DE
+        ld [IX] wall
+        inc IX
 
 bodyEW, bodyNS, bodySE, bodyNE :: Word8
 bodyEW = 0x91
@@ -248,7 +361,7 @@ setupSlither locs@MkLocs{..} (dx, dy) newHeadChar bodyMap = do
         forM_ bodyMap \(head, body) -> do
             skippable \next -> do
                 cp head
-                jr NZ next
+                jp NZ next
                 ld A body
                 ret
     let delta = dx + 40 * dy
