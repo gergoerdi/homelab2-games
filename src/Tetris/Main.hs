@@ -7,6 +7,7 @@ import Tetris
 import Tetris.Draw
 
 import Z80
+import Z80.Utils
 import Data.Word
 import Data.Bits
 import Control.Monad
@@ -37,13 +38,6 @@ tetris = do
         levelDelay <- labelled $ db [15]
         let locs = MkLocs{..}
 
-    pure ()
-
-skippable :: (Location -> Z80ASM) -> Z80ASM
-skippable body = do
-    rec
-        body end
-        end <- label
     pure ()
 
 updateState :: Locations -> Z80ASM

@@ -4,6 +4,7 @@
 module Tetris where
 
 import Z80
+import Z80.Utils
 import Data.Word
 import Data.Bits
 import Data.Semigroup (stimes)
@@ -21,11 +22,6 @@ data Locations = MkLocs
 padTo :: Int -> a -> [a] -> [a]
 padTo n x0 [] = replicate n x0
 padTo n x0 (x:xs) = x : padTo (n-1) x0 xs
-
-dw :: [Word16] -> Z80ASM
-dw = db . concatMap toBytes
-  where
-    toBytes w = [fromIntegral $ w `mod` 0x100, fromIntegral $ w `div` 0x100]
 
 wellWidth :: Num a => a
 wellWidth = 10

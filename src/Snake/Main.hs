@@ -4,7 +4,9 @@
 module Snake.Main (snake) where
 
 import Z80
+import Z80.Utils
 import Data.Word
+import Data.Int
 import Control.Monad
 import Data.Bits
 import Data.Char
@@ -13,6 +15,11 @@ data Locations = MkLocs
   { headIdx :: Location
   , tailIdx :: Location
   , segmentLo, segmentHi, segmentChar :: Location
+  , newHead :: Location
+  , bodyDispatchTrampoline :: Location
+  , bodyDispatch :: Location
+  , slitherF :: Location
+  , lastInput, currentDir :: Location
   }
 
 videoStart :: Word16
@@ -39,13 +46,36 @@ snake = do
         clearScreen
         drawBorder
         drawSnake locs
-        loopForever $ pure ()
+        loopForever $ do
+            replicateM_ 3 do
+                halt
+                call latchInputF
+            ldVia A [currentDir] [lastInput]
+            readInput locs
 
-        tailIdx <- labelled $ db [0]
-        headIdx <- labelled $ db [6]
-        segmentLo <- labelled $ db $ take 256 $ [100, 60, 61, 62, 63, 64, 110, 120] ++ repeat 0
-        segmentHi <- labelled $ db $ take 256 $ repeat 0
-        segmentChar <- labelled $ db $ take 256 $ [bodyNS, bodySE, bodyEW, bodyEW, bodyEW, headE] ++ repeat 0
+        slitherF <- labelled $ slither locs
+        latchInputF <- labelled $ latchInput locs
+
+        tailIdx <- labelled $ db [240]
+        headIdx <- labelled $ db [250]
+        newHead <- labelled $ db [0]
+        segmentLo <- labelled $ db $ take 256 $
+          [0..]
+          -- [100, 60, 61, 62, 63, 64, 110, 120] ++ repeat 0
+        segmentHi <- labelled $ db $ take 256 $
+          replicate 100 0xc1 ++
+          repeat 0xc0
+        segmentChar <- labelled $ db $ take 256 $
+          -- repeat bodyEW
+          replicate 250 bodyEW ++ [headE] ++
+          repeat bodyEW
+          -- [bodyNS, bodySE, bodyEW, bodyEW, bodyEW, headE, 0x12, 0x34] ++ repeat 0
+
+        bodyDispatchTrampoline <- labelled $ db [0xc3] -- JP
+        bodyDispatch <- labelled $ dw [0]
+
+        lastInput <- labelled $ db [0b1110_1111]
+        currentDir <- labelled $ db [0b1110_1111]
     pure ()
 
 clearScreen :: Z80ASM
@@ -75,13 +105,94 @@ drawBorder = do
         ld [HL] wall
         inc HL
 
-bodyEW, bodyNS, bodySE :: Word8
+bodyEW, bodyNS, bodySE, bodyNE :: Word8
 bodyEW = 0x91
 bodyNS = 0x90
 bodySE = 0x6e
+bodyNE = 0x6c
+bodySW = 0x6d
+bodyNW = 0x6b
 
-headE :: Word8
+headS, headW, headN, headE :: Word8
+headS = 0x8a
+headW = 0x8b
+headN = 0x8c
 headE = 0x8d
+
+-- Pre: `DE` is the movement vector
+-- Pre: `[bodyDispatch]` transforms `A` from current head to new body
+slither :: Locations -> Z80ASM
+slither MkLocs{..} = do
+    ld B 0
+
+    ldVia A C [tailIdx]
+    eraseTail
+    bumpTail
+
+    ldVia A C [headIdx]
+
+    replaceOldHead
+    fillNewHead
+    bumpHead
+    ret
+  where
+    eraseTail = do
+        loadArray H (segmentHi, BC)
+        loadArray L (segmentLo, BC)
+        ld [HL] space
+
+    bumpTail = do
+        inc A
+        ld HL tailIdx
+        ld [HL] A
+
+    bumpHead = do
+        ld HL headIdx
+        ld [HL] C
+
+    replaceOldHead = do
+        loadArray A (segmentChar, BC)
+
+        call bodyDispatchTrampoline
+        writeArray (segmentChar, BC) A
+
+        -- Redraw old head with body
+        loadArray H (segmentHi, BC)
+        loadArray L (segmentLo, BC)
+        ld [HL] A
+
+    fillNewHead = do
+        -- New segment location: head + direction offset
+        add HL DE
+        inc C
+        writeArray (segmentHi, BC) H
+        writeArray (segmentLo, BC) L
+
+        -- New segment contents: head
+        ld A [newHead]
+        writeArray (segmentChar, BC) A
+
+        -- Draw new head
+        ld [HL] A
+
+setupSlither :: Locations -> (Int16, Int16) -> Word8 -> [(Word8, Word8)] -> Z80ASM
+setupSlither locs@MkLocs{..} (dx, dy) newHeadChar bodyMap = do
+    myDispatch <- skipped $ labelled do
+        forM_ bodyMap \(head, body) -> do
+            skippable \next -> do
+                cp head
+                jr NZ next
+                ld A body
+                ret
+    let delta = dx + 40 * dy
+    ld DE $ fromIntegral delta
+    ldVia A [newHead] newHeadChar
+
+    ld HL bodyDispatch
+    let (lo, hi) = wordBytes myDispatch
+    ldVia A [HL] lo
+    inc HL
+    ldVia A [HL] hi
 
 drawSnake :: Locations -> Z80ASM
 drawSnake MkLocs{..} = do
@@ -89,26 +200,128 @@ drawSnake MkLocs{..} = do
     ldVia A C [tailIdx]
     ld A [headIdx]
 
-    withLabel \loop -> do
+    withLabel \loop -> skippable \end -> do
         -- Set HL to target video address
-        loadArray E segmentLo BC
-        loadArray D segmentHi BC
-        ld HL videoStart
-        add HL DE
+        loadArray H (segmentHi, BC)
+        loadArray L (segmentLo, BC)
 
         -- Draw segment
-        loadArray D segmentChar BC
+        loadArray D (segmentChar, BC)
         ld [HL] D
 
         -- Compare iterator C with head A
-        inc C
         cp C
-        jp NZ loop
+        jp Z end
+        inc C
+        jp loop
 
--- | Pre: `BC` contains the index
+-- | Pre: register `idx` contains the index
 -- | Post: `target` contains the value at `(base + index)`
-loadArray :: (Load r [RegIx], Arithmetic RegIx r') => r -> Location -> r' -> Z80ASM
-loadArray target base idx = do
+loadArray :: (Load r [RegIx], Arithmetic RegIx r') => r -> (Location, r') -> Z80ASM
+loadArray target (base, idx) = do
     ld IX base
     add IX idx
     ld target [IX]
+
+writeArray :: (Load [RegIx] r, Arithmetic RegIx r') => (Location, r') -> r -> Z80ASM
+writeArray (base, idx) src = do
+    ld IX base
+    add IX idx
+    ld [IX] src
+
+latchInput :: Locations -> Z80ASM
+latchInput MkLocs{..} = do
+    ld A [0x3adf]
+    ld B A
+
+    rec
+        -- Check "i"
+        rra
+        rra
+        jp NC moveV
+        -- Check "j"
+        rra
+        jp NC moveH
+        -- Check "k"
+        rra
+        jp NC moveV
+        -- Check "l"
+        rra
+        jp NC moveH
+        ret
+
+        moveV <- labelled do
+            ld A [currentDir]
+            cp 0b1111_1101 -- I
+            ret Z
+            cp 0b1111_0111 -- K
+            ret Z
+            jp move
+        moveH <- labelled do
+            ld A [currentDir]
+            cp 0b1111_1011 -- J
+            ret Z
+            cp 0b1110_1111 -- L
+            ret Z
+            jp move
+
+        move <- labelled do
+            ldVia A [lastInput] B
+    ret
+
+readInput :: Locations -> Z80ASM
+readInput locs@MkLocs{..} = skippable $ \end -> do
+    ld A [lastInput]
+    rec
+        -- Check "i"
+        rra
+        rra
+        jp NC moveN
+        -- Check "j"
+        rra
+        jp NC moveW
+        -- Check "k"
+        rra
+        jp NC moveS
+        -- Check "l"
+        rra
+        jp NC moveE
+        jp end
+
+        moveS <- labelled do
+            setupSlither locs (0, 1) headS $
+              [ (headS, bodyNS)
+              , (headN, bodyNS)
+              , (headW, bodySE)
+              , (headE, bodySW)
+              ]
+            jp move
+        moveW <- labelled do
+            setupSlither locs (-1, 0) headW $
+              [ (headS, bodyNW)
+              , (headN, bodySW)
+              , (headW, bodyEW)
+              , (headE, bodyEW)
+              ]
+            jp move
+        moveN <- labelled do
+            setupSlither locs (0, -1) headN $
+              [ (headS, bodyNS)
+              , (headN, bodyNS)
+              , (headW, bodyNE)
+              , (headE, bodyNW)
+              ]
+            jp move
+        moveE <- labelled do
+            setupSlither locs (1, 0) headE $
+              [ (headS, bodyNE)
+              , (headN, bodySE)
+              , (headW, bodyEW)
+              , (headE, bodyEW)
+              ]
+            jp move
+
+        move <- labelled do
+            call slitherF
+
+    pure ()
