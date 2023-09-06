@@ -45,28 +45,36 @@ snake = do
         let locs = MkLocs{..}
         clearScreen
         drawBorder
-        drawSnake locs
-        loopForever $ do
-            replicateM_ 3 do
-                halt
-                call latchInputF
-            ldVia A [currentDir] [lastInput]
-            move locs
+        loopForever do
+            initState locs
+            drawSnake locs
+            withLabel \loop -> do
+                replicateM_ 3 do
+                    halt
+                    call latchInputF
+                ldVia A [currentDir] [lastInput]
+                move locs
+                jp Z loop
+                gameOver locs
 
         slitherF <- labelled $ slither locs
         latchInputF <- labelled $ latchInput locs
 
-        tailIdx <- labelled $ db [0]
-        headIdx <- labelled $ db [10]
-        newHead <- labelled $ db [0]
-        segmentLo <- labelled $ db $ take 256 $ [0..]
-        segmentHi <- labelled $ db $ take 256 $ repeat 0xc1
-        segmentChar <- labelled $ db $ take 256 $ replicate 10 bodyEW ++ [headE] ++ repeat 0
-        bodyDispatchTrampoline <- labelled $ db [0xc3] -- JP
+        bodyDispatchTrampoline <- labelled $ do
+            ld HL [bodyDispatch]
+            () <- jp [HL]
+            pure ()
         bodyDispatch <- labelled $ dw [0]
 
-        lastInput <- labelled $ db [0b1110_1111]
-        currentDir <- labelled $ db [0b1110_1111]
+        tailIdx <- labelled $ db [0]
+        headIdx <- labelled $ db [0]
+        newHead <- labelled $ db [0]
+        segmentLo <- labelled $ db $ replicate 0x100 0
+        segmentHi <- labelled $ db $ replicate 0x100 0
+        segmentChar <- labelled $ db $ replicate 0x100 0
+
+        lastInput <- labelled $ db [0]
+        currentDir <- labelled $ db [0]
     pure ()
 
 clearScreen :: Z80ASM
@@ -78,6 +86,55 @@ clearScreen = do
         ld A H
         cp 0xc4
         jr NZ loop
+    pure ()
+
+initState :: Locations -> Z80ASM
+initState MkLocs{..} = do
+    ldVia A [tailIdx] 0
+    ldVia A [headIdx] 10
+    ldVia A [lastInput] 0b1110_1111
+    ld [currentDir] A
+
+    ld HL segmentLo
+    ld IX segmentHi
+    ld IY segmentChar
+    ld C 0
+    decLoopB 0x100 do
+        ld [HL] C
+        inc C
+        inc HL
+        ldVia A [IX] 0xc1
+        inc IX
+        ldVia A [IY] bodyEW
+        inc IY
+    ldVia A [segmentChar + 10] headE
+
+gameOver :: Locations -> Z80ASM
+gameOver MkLocs{..} = skippable \end -> do
+    rec
+        ld A 0x83
+        call fill
+        replicateM_ 10 halt
+        ld A space
+        call fill
+        jp end
+
+        fill <- labelled $ do
+            ld HL (videoStart + 41)
+            decLoopB 23 do
+                push HL
+                exx
+                pop HL
+                decLoopB 38 do
+                    ld [HL] A
+                    inc HL
+                inc HL
+                inc HL
+                push HL
+                exx
+                pop HL
+                replicateM_ 2 halt
+            ret
     pure ()
 
 drawBorder :: Z80ASM
@@ -258,6 +315,7 @@ latchInput MkLocs{..} = do
         -- Check "l"
         rra
         jp NC moveH
+        Z80.xor A
         ret
 
         moveV <- labelled do
@@ -279,6 +337,7 @@ latchInput MkLocs{..} = do
             ldVia A [lastInput] B
     ret
 
+-- | Post: `NZ` iff collision
 move :: Locations -> Z80ASM
 move locs@MkLocs{..} = skippable $ \end -> do
     ld A [lastInput]
@@ -296,6 +355,7 @@ move locs@MkLocs{..} = skippable $ \end -> do
         -- Check "l"
         rra
         jp NC moveE
+        Z80.xor A
         jp end
 
         moveS <- labelled do
@@ -333,7 +393,5 @@ move locs@MkLocs{..} = skippable $ \end -> do
 
         move <- labelled do
             call slitherF
-            jp Z end
-            loopForever $ pure ()
 
     pure ()
