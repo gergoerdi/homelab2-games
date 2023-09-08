@@ -22,6 +22,9 @@ dw = db . concatMap toBytes
   where
     toBytes w = let (lo, hi) = wordBytes w in [lo, hi]
 
+resw :: Word16 -> Z80ASM
+resw = resb . (* 2)
+
 wordBytes :: Word16 -> (Word8, Word8)
 wordBytes w = (lo, hi)
   where

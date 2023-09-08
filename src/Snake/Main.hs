@@ -40,43 +40,40 @@ wall = 0xfb
 -- wall = 0xa0
 
 snake :: Z80ASM
-snake = do
-    rec
-        let locs = MkLocs{..}
-        clearScreen
+snake = mdo
+    let locs = MkLocs{..}
+    clearScreen
+    drawBorder
+    loopForever do
         drawBorder
-        loopForever do
-            drawBorder
-            initState locs
-            drawSnake locs
-            withLabel \loop -> do
-                replicateM_ 3 do
-                    halt
-                    call latchInputF
-                ldVia A [currentDir] [lastInput]
-                move locs
-                jp Z loop
-                gameOver locs
+        initState locs
+        drawSnake locs
+        withLabel \loop -> do
+            replicateM_ 3 do
+                halt
+                call latchInputF
+            ldVia A [currentDir] [lastInput]
+            move locs
+            jp Z loop
+            gameOver locs
 
-        slitherF <- labelled $ slither locs
-        latchInputF <- labelled $ latchInput locs
-        lfsr11F <- labelled $ lfsr11
+    slitherF <- labelled $ slither locs
+    latchInputF <- labelled $ latchInput locs
+    lfsr11F <- labelled $ lfsr11
 
-        bodyDispatchTrampoline <- labelled $ do
-            ld HL [bodyDispatch]
-            () <- jp [HL]
-            pure ()
-        bodyDispatch <- labelled $ dw [0]
+    bodyDispatchTrampoline <- labelled $ do
+        ld HL [bodyDispatch]
+        jp [HL] :: Z80ASM
 
-        tailIdx <- labelled $ db [0]
-        headIdx <- labelled $ db [0]
-        newHead <- labelled $ db [0]
-        segmentLo <- labelled $ db $ replicate 0x100 0
-        segmentHi <- labelled $ db $ replicate 0x100 0
-        segmentChar <- labelled $ db $ replicate 0x100 0
-
-        lastInput <- labelled $ db [0]
-        currentDir <- labelled $ db [0]
+    bodyDispatch <- labelled $ resw 1
+    tailIdx <- labelled $ resb 1
+    headIdx <- labelled $ resb 1
+    newHead <- labelled $ resb 1
+    segmentLo <- labelled $ resb 0x100
+    segmentHi <- labelled $ resb 0x100
+    segmentChar <- labelled $ resb 0x100
+    lastInput <- labelled $ resb 1
+    currentDir <- labelled $ resb 1
     pure ()
 
 clearScreen :: Z80ASM
@@ -130,7 +127,7 @@ gameOver MkLocs{..} = skippable \end -> do
     rec
         ld A 0x83
         call fill
-        replicateM_ 10 halt
+        decLoopB 10 halt
         ld A space
         call fill
         jp end

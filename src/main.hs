@@ -21,8 +21,6 @@ main = do
         -- booter
         -- tetris
         snake
-        _ <- loopForever $ pure ()
-        pure ()
 
 labelASCII :: Location -> [Word8]
 labelASCII loc = map (+ 0x30) $ digits
