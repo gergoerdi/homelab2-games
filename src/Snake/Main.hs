@@ -18,10 +18,11 @@ data Locations = MkLocs
   , newHead :: Location
   , bodyDispatchTrampoline :: Location
   , bodyDispatch :: Location
-  , slitherF, lfsr10F, isInBoundsF, randomizeF :: Location
+  , slitherF, lfsr10F, isInBoundsF, randomizeF, placeFruitF :: Location
   , lastInput, currentDir :: Location
   , rng :: Location
   , fruitLoc :: Location
+  , score, speed, lives :: Location
   }
 
 videoStart :: Word16
@@ -31,7 +32,7 @@ numCols :: (Num a) => a
 numCols = 40
 
 numRows :: (Num a) => a
-numRows = 20
+numRows = 22
 
 space :: Word8
 space = 0x20
@@ -48,17 +49,21 @@ snake :: Z80ASM
 snake = mdo
     let locs = MkLocs{..}
     clearScreen
-    drawBorder
+    initGame locs
     loopForever do
         drawBorder
-        initState locs
+        initLevel locs
         drawSnake locs
+        drawScore locs
         withLabel \loop -> do
             drawFruit locs
+            drawScore locs
             call randomizeF
-            replicateM_ 3 do
+            ldVia A B [speed]
+            withLabel \loop -> do
                 halt
                 call latchInputF
+                djnz loop
             ldVia A [currentDir] [lastInput]
             move locs
             jp Z loop
@@ -70,10 +75,12 @@ snake = mdo
     rng <- labelled $ dw [0x0101]
     isInBoundsF <- labelled $ isInBounds locs
     randomizeF <- labelled $ randomize locs
+    placeFruitF <- labelled $ placeFruit locs
 
     bodyDispatchTrampoline <- labelled $ do
         ld HL [bodyDispatch]
         jp [HL] :: Z80ASM
+    score <- labelled $ db [0, 0, 0]
 
     bodyDispatch <- labelled $ resw 1
     tailIdx <- labelled $ resb 1
@@ -85,6 +92,8 @@ snake = mdo
     lastInput <- labelled $ resb 1
     currentDir <- labelled $ resb 1
     fruitLoc <- labelled $ resw 1
+    speed <- labelled $ resb 1
+    lives <- labelled $ resb 1
     pure ()
 
 clearScreen :: Z80ASM
@@ -98,11 +107,20 @@ clearScreen = do
         jp NZ loop
     pure ()
 
-initState :: Locations -> Z80ASM
-initState MkLocs{..} = do
-    ldVia A [tailIdx] 0
+initGame :: Locations -> Z80ASM
+initGame MkLocs{..} = do
+    ldVia A [speed] 5
+    ld A 0
+    -- forM_ [0..2] \i -> ld [score + i] A
+
+initLevel :: Locations -> Z80ASM
+initLevel MkLocs{..} = do
     ldVia A [headIdx] 10
     ldVia A [lastInput] 0b1110_1111
+
+    ld A 0
+    forM_ [0..2] \i -> ld [score + i] A
+    ld [tailIdx] A
     ld [currentDir] A
 
     ld HL segmentLo
@@ -118,18 +136,20 @@ initState MkLocs{..} = do
         ldVia A [IY] bodyEW
         inc IY
     ldVia A [segmentChar + 10] headE
+    call placeFruitF
 
-    withLabel \loop -> do
-        call randomizeF
-        ldVia A [fruitLoc] [rng]
-        ld L A
-        ld A [rng + 1]
-        Z80.and 0x03
-        Z80.or 0xc0
-        ld [fruitLoc + 1] A
-        ld H A
-        call isInBoundsF
-        jp Z loop
+placeFruit :: Locations -> Z80ASM
+placeFruit MkLocs{..} = loopForever do
+    call randomizeF
+    ldVia A [fruitLoc] [rng]
+    ld L A
+    ld A [rng + 1]
+    Z80.and 0x03
+    Z80.or 0xc0
+    ld [fruitLoc + 1] A
+    ld H A
+    call isInBoundsF
+    ret NZ
 
 -- | An 10-bit maximal LFSR
 -- | Pre: `DE` is the current state
@@ -282,6 +302,7 @@ drawBorder :: Z80ASM
 drawBorder = do
     drawBorderH
     drawBorderV
+    drawText
 
 drawBorderH :: Z80ASM
 drawBorderH = do
@@ -303,6 +324,35 @@ drawBorderV = do
         add IX DE
         ld [IX] wall
         inc IX
+
+drawText :: Z80ASM
+drawText = do
+    rec
+        ld IX (videoStart + (numRows + 1) * numCols)
+        ld IY text
+        text <- stringLoopB "SCORE:" do
+            ldVia A [IX] [IY]
+            inc IX
+            inc IY
+    rec
+        ld IX (videoStart + (numRows + 1) * numCols + 25)
+        ld IY text
+        text <- stringLoopB "LIVES:" do
+            ldVia A [IX] [IY]
+            inc IX
+            inc IY
+    ld IX (videoStart + (numRows + 1) * numCols + 33)
+    replicateM_ 5 do
+        ld [IX] 0x0f
+        inc IX
+    pure ()
+
+stringLoopB :: String -> Z80ASM -> Z80 Location
+stringLoopB s body = skippable \end -> mdo
+    decLoopB (fromIntegral $ length s) body
+    jp end
+    text <- labelled $ db $ map (fromIntegral . ord) s
+    pure text
 
 bodyEW, bodyNS, bodySE, bodyNE :: Word8
 bodyEW = 0x91
@@ -330,6 +380,13 @@ slither MkLocs{..} = do
     ld B 0
 
     checkCollision
+    -- `Z` if we ate a fruit
+    skippable \noFruit -> do
+        jp NZ noFruit
+        exx
+        incScore
+        call placeFruitF
+        exx
 
     ldVia A C [tailIdx]
     eraseTail
@@ -343,7 +400,7 @@ slither MkLocs{..} = do
     Z80.xor A
     ret
   where
-    checkCollision = do
+    checkCollision = skippable \eat -> do
         ldVia A C [headIdx]
         loadArray H (segmentHi, BC)
         loadArray L (segmentLo, BC)
@@ -351,8 +408,11 @@ slither MkLocs{..} = do
 
         -- Check collision
         ld A [HL]
+        cp fruit
+        jp Z eat
         cp space
         ret NZ
+        cp fruit
 
     eraseTail = do
         loadArray H (segmentHi, BC)
@@ -360,8 +420,7 @@ slither MkLocs{..} = do
         ld [HL] space
 
         inc A
-        ld HL tailIdx
-        ld [HL] A
+        ld [tailIdx] A
 
     bumpHead = do
         ld HL headIdx
@@ -392,6 +451,17 @@ slither MkLocs{..} = do
 
         -- Draw new head
         ld [HL] A
+
+    incScore = mdo
+        ld IX score
+        skippable \finish -> decLoopB 3 do
+            ld A [IX]
+            inc A
+            cp 10
+            jp NZ finish
+            ldVia A [IX] 0
+            inc IX
+        ld [IX] A
 
 setupSlither :: Locations -> (Int16, Int16) -> Word8 -> [(Word8, Word8)] -> Z80ASM
 setupSlither locs@MkLocs{..} (dx, dy) newHeadChar bodyMap = do
@@ -433,6 +503,18 @@ drawSnake MkLocs{..} = do
         inc C
         jp loop
 
+drawScore :: Locations -> Z80ASM
+drawScore MkLocs{..} = do
+    ld IX (videoStart + (numRows + 1) * numCols + 10)
+    ld IY (score + 2)
+    decLoopB 3 do
+        ld A [IY]
+        add A (fromIntegral $ ord '0')
+        ld [IX] A
+        inc IX
+        dec IY
+    pure ()
+
 drawFruit :: Locations -> Z80ASM
 drawFruit MkLocs{..} = do
     ldVia A L [fruitLoc]
@@ -456,7 +538,7 @@ writeArray (base, idx) src = do
 latchInput :: Locations -> Z80ASM
 latchInput MkLocs{..} = do
     ld A [0x3adf]
-    ld B A
+    ld C A
 
     rec
         -- Check "i"
@@ -491,7 +573,7 @@ latchInput MkLocs{..} = do
             jp move
 
         move <- labelled do
-            ldVia A [lastInput] B
+            ldVia A [lastInput] C
     ret
 
 -- | Post: `NZ` iff collision
