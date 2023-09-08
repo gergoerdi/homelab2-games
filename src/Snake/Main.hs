@@ -14,6 +14,7 @@ import Data.Char
 data Locations = MkLocs
   { headIdx :: Location
   , tailIdx :: Location
+  , growth :: Location
   , segmentLo, segmentHi, segmentChar :: Location
   , newHead :: Location
   , bodyDispatchTrampoline :: Location
@@ -94,6 +95,7 @@ snake = mdo
     fruitLoc <- labelled $ resw 1
     speed <- labelled $ resb 1
     lives <- labelled $ resb 1
+    growth <- labelled $ resb 1
     pure ()
 
 clearScreen :: Z80ASM
@@ -122,6 +124,7 @@ initLevel MkLocs{..} = do
     forM_ [0..2] \i -> ld [score + i] A
     ld [tailIdx] A
     ld [currentDir] A
+    ld [growth] A
 
     ld HL segmentLo
     ld IX segmentHi
@@ -385,13 +388,22 @@ slither MkLocs{..} = do
         jp NZ noFruit
         exx
         incScore
+        ld A [growth]
+        add A 5
+        ld [growth] A
         call placeFruitF
         exx
 
-    ldVia A C [tailIdx]
-    eraseTail
+    skippable \grow -> mdo
+        ld A [growth]
+        cp 0
+        jp Z noGrow
+        dec A
+        ld [growth] A
+        jp grow
+        noGrow <- labelled eraseTail
+        pure ()
 
-    ldVia A C [headIdx]
     replaceOldHead
     fillNewHead
     bumpHead
@@ -415,6 +427,7 @@ slither MkLocs{..} = do
         cp fruit
 
     eraseTail = do
+        ldVia A C [tailIdx]
         loadArray H (segmentHi, BC)
         loadArray L (segmentLo, BC)
         ld [HL] space
@@ -427,6 +440,7 @@ slither MkLocs{..} = do
         ld [HL] C
 
     replaceOldHead = do
+        ldVia A C [headIdx]
         loadArray A (segmentChar, BC)
         call bodyDispatchTrampoline
         writeArray (segmentChar, BC) A
