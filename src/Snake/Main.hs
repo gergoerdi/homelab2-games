@@ -18,7 +18,7 @@ data Locations = MkLocs
   , newHead :: Location
   , bodyDispatchTrampoline :: Location
   , bodyDispatch :: Location
-  , slitherF, lfsr11F, isInBoundsF, randomizeF :: Location
+  , slitherF, lfsr10F, isInBoundsF, randomizeF :: Location
   , lastInput, currentDir :: Location
   , rng :: Location
   , fruitLoc :: Location
@@ -31,7 +31,7 @@ numCols :: (Num a) => a
 numCols = 40
 
 numRows :: (Num a) => a
-numRows = 25
+numRows = 20
 
 space :: Word8
 space = 0x20
@@ -66,7 +66,7 @@ snake = mdo
 
     slitherF <- labelled $ slither locs
     latchInputF <- labelled $ latchInput locs
-    lfsr11F <- labelled $ lfsr11
+    lfsr10F <- labelled $ lfsr10
     rng <- labelled $ dw [0x0101]
     isInBoundsF <- labelled $ isInBounds locs
     randomizeF <- labelled $ randomize locs
@@ -131,16 +131,22 @@ initState MkLocs{..} = do
         call isInBoundsF
         jp Z loop
 
--- | A 11-bit maximal LFSR
--- | Pre: DE is the current state
-lfsr11 :: Z80ASM
-lfsr11 = do
+-- | An 10-bit maximal LFSR
+-- | Pre: `DE` is the current state
+-- | Post: `DE` is the new state
+-- | Clobbrs: `A`
+lfsr10 :: Z80ASM
+lfsr10 = do
     srl D
-    rr E
+    ld A E
+    rra
+    ld E A
     skippable \skip -> do
         jp NC skip
-        ld A D
-        Z80.xor 0x05
+        Z80.xor 0x04
+        ld E A
+        ld A 0x02
+        Z80.xor D
         ld D A
     ret
 
@@ -148,7 +154,7 @@ randomize :: Locations -> Z80ASM
 randomize MkLocs{..} = do
     ldVia A E [rng]
     ldVia A D [rng + 1]
-    call lfsr11F
+    call lfsr10F
     ldVia A [rng] E
     ldVia A [rng + 1] D
     ret
@@ -168,11 +174,14 @@ isInBounds MkLocs{..} = mdo
 
     -- Skip bottom border
     skippable \notBottom -> do
+        let lastRowStart = videoStart + (numRows - 1) * numCols + 1
+            (lastRowStartL, lastRowStartH) = wordBytes lastRowStart
         ld A H
-        cp 0xc3
-        jp NZ notBottom
+        cp lastRowStartH
+        jp C notBottom
+        jp NZ outOfBounds
         ld A L
-        cp $ fromIntegral $ ((numRows - 1) * numCols + 1) `mod` 256
+        cp lastRowStartL
         jp NC outOfBounds
 
     -- Skip vertical borders: keep subtracting numCols until we get 0 or -1
@@ -249,12 +258,12 @@ gameOver MkLocs{..} = skippable \end -> do
         exx
         ld C A
         exx
-        decLoopB 8 do
+        decLoopB 4 do
             push DE
             exx
             pop DE
             decLoopB 0x100 $ skippable \skip -> do
-                call lfsr11F
+                call lfsr10F
 
                 ld A D
                 Z80.and 0x03
