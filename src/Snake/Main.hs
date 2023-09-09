@@ -3,6 +3,9 @@
 {-# LANGUAGE FlexibleContexts #-}
 module Snake.Main (snake) where
 
+import Snake
+import Snake.Transitions
+
 import Z80
 import Z80.Utils
 import Data.Word
@@ -10,34 +13,6 @@ import Data.Int
 import Control.Monad
 import Data.Bits
 import Data.Char
-
-data Locations = MkLocs
-  { headIdx :: Location
-  , tailIdx :: Location
-  , growth :: Location
-  , segmentLo, segmentHi, segmentChar :: Location
-  , newHead :: Location
-  , bodyDispatchTrampoline :: Location
-  , bodyDispatch :: Location
-  , slitherF, lfsr10F, isInBoundsF, randomizeF, placeFruitF :: Location
-  , lastInput, currentDir :: Location
-  , rng :: Location
-  , fruitLoc, fruitNum :: Location
-  , score, speed, lives :: Location
-  }
-
-videoStart :: Word16
-videoStart = 0xc001
-
-numCols :: (Num a) => a
-numCols = 40
-
-numRows :: (Num a) => a
-numRows = 22
-
-space :: Word8
-space = 0x20
--- space = 0xfb
 
 wall :: Word8
 wall = 0xfb
@@ -52,31 +27,46 @@ life = 0x0f
 snake :: Z80ASM
 snake = mdo
     let locs = MkLocs{..}
+    clearScreen
+    drawBorder
     loopForever do
-        clearScreen
         initGame locs
-        drawBorder
-        skippable \die -> loopForever do
+        skippable \gameOver -> loopForever mdo
             initLevel locs
             drawSnake locs
-            withLabel \loop -> do
-                drawFruit locs
+            withLabel \loop -> mdo
                 call drawScoreF
+
+                ld A [fruitNum]
+                cp 10
+                jp NZ stay
+
+                finishLevel locs
+                jp newLevel
+
+                stay <- label
+                drawFruit locs
                 call randomizeF
                 ldVia A B [speed]
+                srl B
                 withLabel \loop -> do
+                    call latchInputF
                     halt
                     call latchInputF
                     djnz loop
                 ldVia A [currentDir] [lastInput]
                 move locs
                 jp Z loop
-                ld A [lives]
-                dec A
-                ld [lives] A
-                jp Z die
-                call drawScoreF
-                gameOver locs
+
+            ld A [lives]
+            dec A
+            ld [lives] A
+            jp Z gameOver
+            call drawScoreF
+            deathTransition locs
+            newLevel <- label
+            pure ()
+        gameOverTransition locs
 
     slitherF <- labelled $ slither locs
     latchInputF <- labelled $ latchInput locs
@@ -121,8 +111,8 @@ clearScreen = do
 
 initGame :: Locations -> Z80ASM
 initGame MkLocs{..} = do
-    ldVia A [speed] 5
-    ldVia A [lives] 3
+    ldVia A [speed] 10
+    ldVia A [lives] 5
     ldVia A [fruitNum] 1
     ld A 0
     forM_ [0..2] \i -> ld [score + i] A
@@ -258,62 +248,15 @@ isInBounds MkLocs{..} = mdo
         ret
     pure ()
 
-gameOver :: Locations -> Z80ASM
-gameOver MkLocs{..} = skippable \end -> do
-    rec
-        ld A 0x83
-        call fill
-        decLoopB 10 halt
-        ld A space
-        call fill
-        jp end
+levelTransition :: Locations -> Z80ASM
+levelTransition = transition 0x74 curtainV
 
-        fill <- labelled do
-            -- curtainV
-            scramble
-            ret
-    pure ()
-  where
-    curtainV = do
-        ld HL (videoStart + 41)
-        decLoopB (numRows - 2) do
-            push HL
-            exx
-            pop HL
-            decLoopB (numCols - 2) do
-                ld [HL] A
-                inc HL
-            inc HL
-            inc HL
-            push HL
-            exx
-            pop HL
-            replicateM_ 1 halt
+deathTransition :: Locations -> Z80ASM
+deathTransition = transition 0x79 curtainH
 
-    scramble = do
-        ld DE 1
-        exx
-        ld C A
-        exx
-        decLoopB 4 do
-            push DE
-            exx
-            pop DE
-            decLoopB 0x100 $ skippable \skip -> do
-                call lfsr10F
+gameOverTransition :: Locations -> Z80ASM
+gameOverTransition = transition 0x83 scramble
 
-                ld A D
-                Z80.and 0x03
-                Z80.or 0xc0
-                ld H A
-                ld L E
-
-                call isInBoundsF
-                jp Z skip
-                ldVia A [HL] C
-            push DE
-            exx
-            pop DE
 
 drawBorder :: Z80ASM
 drawBorder = do
@@ -389,7 +332,7 @@ headW = 0x6f
 -- Pre: `[bodyDispatch]` transforms `A` from current head to new body
 -- Post: `NZ` iff collision occurred
 slither :: Locations -> Z80ASM
-slither MkLocs{..} = do
+slither locs@MkLocs{..} = do
     ld B 0
 
     checkCollision
@@ -492,12 +435,11 @@ slither MkLocs{..} = do
             inc IX
         ld [IX] A
 
-    incFruit = do
+    incFruit = skippable \sameLevel -> do
         ld IX fruitNum
         ld A [IX]
         inc A
         ld [IX] A
-
 
 setupSlither :: Locations -> (Int16, Int16) -> Word8 -> [(Word8, Word8)] -> Z80ASM
 setupSlither locs@MkLocs{..} (dx, dy) newHeadChar bodyMap = do
@@ -685,3 +627,16 @@ move locs@MkLocs{..} = skippable $ \end -> do
             call slitherF
 
     pure ()
+
+finishLevel :: Locations -> Z80ASM
+finishLevel locs@MkLocs{..} = do
+    ld IX fruitNum
+    ld A 1
+    ld [IX] A
+
+    ld IX speed
+    ld A [IX]
+    dec A
+    ld [IX] A
+
+    levelTransition locs
