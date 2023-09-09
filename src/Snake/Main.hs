@@ -22,7 +22,7 @@ data Locations = MkLocs
   , slitherF, lfsr10F, isInBoundsF, randomizeF, placeFruitF :: Location
   , lastInput, currentDir :: Location
   , rng :: Location
-  , fruitLoc :: Location
+  , fruitLoc, fruitNum :: Location
   , score, speed, lives :: Location
   }
 
@@ -46,29 +46,37 @@ wall = 0xfb
 fruit :: Word8
 fruit = 0x74
 
+life :: Word8
+life = 0x0f
+
 snake :: Z80ASM
 snake = mdo
     let locs = MkLocs{..}
-    clearScreen
-    initGame locs
     loopForever do
+        clearScreen
+        initGame locs
         drawBorder
-        initLevel locs
-        drawSnake locs
-        drawScore locs
-        withLabel \loop -> do
-            drawFruit locs
-            drawScore locs
-            call randomizeF
-            ldVia A B [speed]
+        skippable \die -> loopForever do
+            initLevel locs
+            drawSnake locs
             withLabel \loop -> do
-                halt
-                call latchInputF
-                djnz loop
-            ldVia A [currentDir] [lastInput]
-            move locs
-            jp Z loop
-            gameOver locs
+                drawFruit locs
+                call drawScoreF
+                call randomizeF
+                ldVia A B [speed]
+                withLabel \loop -> do
+                    halt
+                    call latchInputF
+                    djnz loop
+                ldVia A [currentDir] [lastInput]
+                move locs
+                jp Z loop
+                ld A [lives]
+                dec A
+                ld [lives] A
+                jp Z die
+                call drawScoreF
+                gameOver locs
 
     slitherF <- labelled $ slither locs
     latchInputF <- labelled $ latchInput locs
@@ -77,6 +85,7 @@ snake = mdo
     isInBoundsF <- labelled $ isInBounds locs
     randomizeF <- labelled $ randomize locs
     placeFruitF <- labelled $ placeFruit locs
+    drawScoreF <- labelled $ drawScore locs
 
     bodyDispatchTrampoline <- labelled $ do
         ld HL [bodyDispatch]
@@ -93,6 +102,7 @@ snake = mdo
     lastInput <- labelled $ resb 1
     currentDir <- labelled $ resb 1
     fruitLoc <- labelled $ resw 1
+    fruitNum <- labelled $ resb 1
     speed <- labelled $ resb 1
     lives <- labelled $ resb 1
     growth <- labelled $ resb 1
@@ -112,8 +122,10 @@ clearScreen = do
 initGame :: Locations -> Z80ASM
 initGame MkLocs{..} = do
     ldVia A [speed] 5
+    ldVia A [lives] 3
+    ldVia A [fruitNum] 1
     ld A 0
-    -- forM_ [0..2] \i -> ld [score + i] A
+    forM_ [0..2] \i -> ld [score + i] A
 
 initLevel :: Locations -> Z80ASM
 initLevel MkLocs{..} = do
@@ -122,6 +134,10 @@ initLevel MkLocs{..} = do
     ld A 0b1110_1111 -- L to move east
     ld [lastInput] A
     ld [currentDir] A
+
+    ld A [fruitNum]
+    dec A
+    replicateM_ 3 $ sla A
     ld [growth] A
 
     ld HL segmentLo
@@ -342,10 +358,6 @@ drawText = do
             ldVia A [IX] [IY]
             inc IX
             inc IY
-    ld IX (videoStart + (numRows + 1) * numCols + 33)
-    replicateM_ 5 do
-        ld [IX] 0x0f
-        inc IX
     pure ()
 
 stringLoopB :: String -> Z80ASM -> Z80 Location
@@ -381,23 +393,25 @@ slither MkLocs{..} = do
     ld B 0
 
     checkCollision
-    -- `Z` if we ate a fruit
+    -- `NC` if we ate a fruit
     skippable \noFruit -> do
-        jp NZ noFruit
+        jp C noFruit
         exx
         incScore
-        ld A [growth]
-        add A 5
-        ld [growth] A
+        incFruit
+        ld IX growth
+        ld A [IX]
+        add A 8
+        ld [IX] A
         call placeFruitF
         exx
 
     skippable \grow -> mdo
-        ld A [growth]
+        ld IX growth
+        ld A [IX]
         cp 0
         jp Z noGrow
-        dec A
-        ld [growth] A
+        dec [IX]
         jp grow
         noGrow <- labelled eraseTail
         pure ()
@@ -418,11 +432,14 @@ slither MkLocs{..} = do
 
         -- Check collision
         ld A [HL]
-        cp fruit
-        jp Z eat
+        skippable \notFruit -> do
+            cp $ succ . fromIntegral . ord $ '9'
+            jp NC notFruit
+            cp $ fromIntegral . ord $ '1'
+            jp NC eat
         cp space
         ret NZ
-        cp fruit
+        scf
 
     eraseTail = do
         ldVia A C [tailIdx]
@@ -475,6 +492,13 @@ slither MkLocs{..} = do
             inc IX
         ld [IX] A
 
+    incFruit = do
+        ld IX fruitNum
+        ld A [IX]
+        inc A
+        ld [IX] A
+
+
 setupSlither :: Locations -> (Int16, Int16) -> Word8 -> [(Word8, Word8)] -> Z80ASM
 setupSlither locs@MkLocs{..} (dx, dy) newHeadChar bodyMap = do
     myDispatch <- skipped $ labelled do
@@ -521,17 +545,32 @@ drawScore MkLocs{..} = do
     ld IY (score + 2)
     decLoopB 3 do
         ld A [IY]
-        add A (fromIntegral $ ord '0')
+        add A $ fromIntegral . ord $ '0'
         ld [IX] A
         inc IX
         dec IY
-    pure ()
+
+    ld IX (videoStart + (numRows + 1) * numCols + 33)
+    ld A [lives]
+    decLoopB 5 mdo
+        cp B
+        jp NC isLife
+        ld [IX] space
+        jp next
+
+        isLife <- label
+        ld [IX] life
+        next <- label
+        inc IX
+    ret
 
 drawFruit :: Locations -> Z80ASM
 drawFruit MkLocs{..} = do
     ldVia A L [fruitLoc]
     ldVia A H [fruitLoc + 1]
-    ld [HL] fruit
+    ld A [fruitNum]
+    add A $ fromIntegral $ ord '0'
+    ld [HL] A
 
 -- | Pre: register `idx` contains the index
 -- | Post: `target` contains the value at `(base + index)`
