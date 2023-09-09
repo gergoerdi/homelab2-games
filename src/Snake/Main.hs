@@ -117,12 +117,10 @@ initGame MkLocs{..} = do
 
 initLevel :: Locations -> Z80ASM
 initLevel MkLocs{..} = do
+    ldVia A [tailIdx] 0
     ldVia A [headIdx] 10
-    ldVia A [lastInput] 0b1110_1111
-
-    ld A 0
-    forM_ [0..2] \i -> ld [score + i] A
-    ld [tailIdx] A
+    ld A 0b1110_1111 -- L to move east
+    ld [lastInput] A
     ld [currentDir] A
     ld [growth] A
 
