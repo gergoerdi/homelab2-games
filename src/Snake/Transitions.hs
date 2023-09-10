@@ -15,6 +15,17 @@ import Data.Char
 
 transition :: Word8 -> (Locations -> Z80ASM) -> Locations -> Z80ASM
 transition filler effect locs@MkLocs{..} = skippable \end -> mdo
+    -- Copy screen to buffer
+    ld IX videoStart
+    ld IY videoBufStart
+    decLoopB 4 do
+        exx
+        decLoopB 256 do
+            ldVia A [IY] [IX]
+            inc IX
+            inc IY
+        exx
+
     ld A filler
     call fill
     decLoopB 10 halt
@@ -28,6 +39,16 @@ transition filler effect locs@MkLocs{..} = skippable \end -> mdo
     pure ()
   where
 
+mirrorHLtoIX :: Z80ASM
+mirrorHLtoIX = mdo
+    ldVia A [hack + 2] L
+    ld A H
+    Z80.and (complement 0xc0)
+    Z80.or 0x70
+    ld [hack + 3] A
+    hack <- labelled $ ld IX 0x0000
+    pure ()
+
 curtainH :: Locations -> Z80ASM
 curtainH _ = do
     ld HL $ videoStart + numCols + 1
@@ -38,9 +59,24 @@ curtainH _ = do
         exx
         decLoopB (numRows - 2) do
             exx
-            ld [HL] A
-            add HL DE
-            ld [HL] A
+            skippable \next -> mdo
+                cp 0
+                jp Z copy
+
+                -- Fill with constant byte
+                ld [HL] A
+                add HL DE
+                ld [HL] A
+                jp next
+
+                -- Copy from videoBufStart
+                copy <- label
+                mirrorHLtoIX
+                ldVia A [HL] [IX]
+                add HL DE
+                add IX DE
+                ldVia A [HL] [IX]
+                Z80.xor A -- Keep A zero for next iteration's check
             push DE
             ld E C
             inc HL
@@ -61,20 +97,28 @@ curtainH _ = do
 
 curtainV :: Locations -> Z80ASM
 curtainV _ = do
+    ld IX (videoBufStart + numCols + 1)
     ld HL (videoStart + numCols + 1)
+    push HL
+    exx
+    pop HL
+    exx
     decLoopB (numRows - 2) do
-        push HL
         exx
-        pop HL
         decLoopB (numCols - 2) do
-            ld [HL] A
+            cp 0
+            skippable \next -> mdo
+                ld [HL] A
+                jp NZ next
+
+                ldVia A [HL] [IX]
+                Z80.xor A
+                inc IX
             inc HL
-        inc HL
-        inc HL
-        push HL
-        exx
-        pop HL
+        replicateM_ 2 $ inc HL
+        replicateM_ 2 $ inc IX
         replicateM_ 1 halt
+        exx
 
 scramble :: Locations -> Z80ASM
 scramble MkLocs{..} = do
@@ -86,7 +130,7 @@ scramble MkLocs{..} = do
         push DE
         exx
         pop DE
-        decLoopB 0x100 $ skippable \skip -> do
+        decLoopB 0x100 $ skippable \next -> do
             call lfsr10F
 
             ld A D
@@ -96,8 +140,14 @@ scramble MkLocs{..} = do
             ld L E
 
             call isInBoundsF
-            jp Z skip
+            jp Z next
             ldVia A [HL] C
+            cp 0
+            jp NZ next
+
+            mirrorHLtoIX
+            ldVia A [HL] [IX]
+            Z80.xor A
         push DE
         exx
         pop DE

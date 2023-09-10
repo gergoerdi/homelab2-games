@@ -6,6 +6,9 @@ import Data.Word
 videoStart :: Word16
 videoStart = 0xc001
 
+videoBufStart :: Word16
+videoBufStart = 0x7001
+
 numCols :: (Num a) => a
 numCols = 40
 
