@@ -15,21 +15,10 @@ import Data.Char
 
 transition :: Word8 -> (Locations -> Z80ASM) -> Locations -> Z80ASM
 transition filler effect locs@MkLocs{..} = skippable \end -> mdo
-    -- Copy screen to buffer
-    ld IX videoStart
-    ld IY videoBufStart
-    decLoopB 4 do
-        exx
-        decLoopB 256 do
-            ldVia A [IY] [IX]
-            inc IX
-            inc IY
-        exx
-
     ld A filler
     call fill
     decLoopB 10 halt
-    ld A space
+    Z80.xor A
     call fill
     jp end
 
@@ -37,7 +26,6 @@ transition filler effect locs@MkLocs{..} = skippable \end -> mdo
         effect locs
         ret
     pure ()
-  where
 
 mirrorHLtoIX :: Z80ASM
 mirrorHLtoIX = mdo

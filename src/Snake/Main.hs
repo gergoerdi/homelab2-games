@@ -27,13 +27,15 @@ life = 0x0f
 snake :: Z80ASM
 snake = mdo
     let locs = MkLocs{..}
+
     clearScreen
     drawBorder
+
+    call prepareGameF
+    showBuf
+
     loopForever do
-        initGame locs
         skippable \gameOver -> loopForever mdo
-            initLevel locs
-            drawSnake locs
             withLabel \loop -> mdo
                 call drawScoreF
 
@@ -42,6 +44,8 @@ snake = mdo
                 jp NZ stay
 
                 finishLevel locs
+                call prepareLevelF
+                levelTransition locs
                 jp newLevel
 
                 stay <- label
@@ -63,9 +67,14 @@ snake = mdo
             ld [lives] A
             jp Z gameOver
             call drawScoreF
+
+            call prepareLevelF
             deathTransition locs
+
             newLevel <- label
             pure ()
+
+        call prepareGameF
         gameOverTransition locs
 
     slitherF <- labelled $ slither locs
@@ -76,6 +85,15 @@ snake = mdo
     randomizeF <- labelled $ randomize locs
     placeFruitF <- labelled $ placeFruit locs
     drawScoreF <- labelled $ drawScore locs
+
+    prepareGameF <- labelled $ do
+        initGame locs
+    prepareLevelF <- labelled $ do
+        clearBuf
+        initLevel locs
+        drawSnake locs
+        drawFruitBuf locs
+        ret
 
     bodyDispatchTrampoline <- labelled $ do
         ld HL [bodyDispatch]
@@ -108,6 +126,30 @@ clearScreen = do
         cp 0xc4
         jp NZ loop
     pure ()
+
+clearBuf :: Z80ASM
+clearBuf = do
+    ld HL videoBufStart
+    rec loop <- label
+        ld [HL] space
+        inc HL
+        ld A H
+        cp 0x74
+        jp NZ loop
+    pure ()
+
+showBuf :: Z80ASM
+showBuf = do
+    ld HL $ videoBufStart + 1 * numCols + 1
+    ld DE $ videoStart + 1 * numCols + 1
+    ld A $ numRows - 2
+    withLabel \loop -> do
+        ld BC $ numCols - 2
+        ldir
+        replicateM_ 2 $ inc HL
+        replicateM_ 2 $ inc DE
+        dec A
+        jp NZ loop
 
 initGame :: Locations -> Z80ASM
 initGame MkLocs{..} = do
@@ -146,7 +188,7 @@ initLevel MkLocs{..} = do
     call placeFruitF
 
 placeFruit :: Locations -> Z80ASM
-placeFruit MkLocs{..} = loopForever do
+placeFruit MkLocs{..} = withLabel \loop -> do
     call randomizeF
     ldVia A [fruitLoc] [rng]
     ld L A
@@ -156,7 +198,8 @@ placeFruit MkLocs{..} = loopForever do
     ld [fruitLoc + 1] A
     ld H A
     call isInBoundsF
-    ret NZ
+    jp Z loop
+    ret
 
 -- | An 10-bit maximal LFSR
 -- | Pre: `DE` is the current state
@@ -464,18 +507,24 @@ drawSnake :: Locations -> Z80ASM
 drawSnake MkLocs{..} = do
     ld B 0
     ldVia A C [tailIdx]
-    ld A [headIdx]
+    ldVia A E [headIdx]
 
     withLabel \loop -> skippable \end -> do
         -- Set HL to target video address
         loadArray H (segmentHi, BC)
+        ld A H
+        Z80.and $ complement 0xc0
+        Z80.or 0x70
+        ld H A
+
         loadArray L (segmentLo, BC)
 
         -- Draw segment
         loadArray D (segmentChar, BC)
         ld [HL] D
 
-        -- Compare iterator C with head A
+        -- Compare iterator C with head E
+        ld A E
         cp C
         jp Z end
         inc C
@@ -510,6 +559,18 @@ drawFruit :: Locations -> Z80ASM
 drawFruit MkLocs{..} = do
     ldVia A L [fruitLoc]
     ldVia A H [fruitLoc + 1]
+    ld A [fruitNum]
+    add A $ fromIntegral $ ord '0'
+    ld [HL] A
+
+drawFruitBuf :: Locations -> Z80ASM
+drawFruitBuf MkLocs{..} = do
+    ldVia A L [fruitLoc]
+    ld A [fruitLoc + 1]
+    Z80.and $ complement 0xc0
+    Z80.or 0x70
+    ld H A
+
     ld A [fruitNum]
     add A $ fromIntegral $ ord '0'
     ld [HL] A
@@ -638,5 +699,3 @@ finishLevel locs@MkLocs{..} = do
     ld A [IX]
     dec A
     ld [IX] A
-
-    levelTransition locs
