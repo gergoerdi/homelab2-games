@@ -30,3 +30,9 @@ wordBytes w = (lo, hi)
   where
     hi = fromIntegral $ w `shiftR` 8
     lo = fromIntegral w
+
+setZ :: Z80ASM
+setZ = cp A
+
+clearA :: Z80ASM
+clearA = Z80.xor A

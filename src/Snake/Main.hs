@@ -288,8 +288,7 @@ isInBounds MkLocs{..} = mdo
         pop DE
         pop HL
     outOfBounds <- labelled $ do
-        -- Set Z flag
-        cp A
+        setZ
         ret
     pure ()
 
@@ -409,7 +408,7 @@ slither locs@MkLocs{..} = do
     bumpHead
 
     -- Clear `NZ` if there was no collision
-    Z80.xor A
+    setZ
     ret
   where
     checkCollision = skippable \eat -> do
@@ -610,7 +609,7 @@ latchInput MkLocs{..} = do
         -- Check "l"
         rra
         jp NC moveH
-        Z80.xor A
+        setZ
         ret
 
         moveV <- labelled do
@@ -650,7 +649,7 @@ move locs@MkLocs{..} = skippable $ \end -> do
         -- Check "l"
         rra
         jp NC moveE
-        Z80.xor A
+        setZ
         jp end
 
         moveS <- labelled do

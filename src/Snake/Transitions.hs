@@ -18,7 +18,7 @@ transition filler effect locs@MkLocs{..} = skippable \end -> mdo
     ld A filler
     call fill
     decLoopB 10 halt
-    Z80.xor A
+    clearA
     call fill
     jp end
 
@@ -64,7 +64,7 @@ curtainH _ = do
                 add HL DE
                 add IX DE
                 ldVia A [HL] [IX]
-                Z80.xor A -- Keep A zero for next iteration's check
+                clearA -- Keep A zero for next iteration's check
             push DE
             ld E C
             inc HL
@@ -100,7 +100,7 @@ curtainV _ = do
                 jp NZ next
 
                 ldVia A [HL] [IX]
-                Z80.xor A
+                clearA
                 inc IX
             inc HL
         replicateM_ 2 $ inc HL
@@ -135,7 +135,7 @@ scramble MkLocs{..} = do
 
             mirrorHLtoIX
             ldVia A [HL] [IX]
-            Z80.xor A
+            clearA
         push DE
         exx
         pop DE
