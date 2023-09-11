@@ -175,8 +175,8 @@ initLevel MkLocs{..} = do
     ld HL segmentLo
     ld IX segmentHi
     ld IY segmentChar
-    ld C 0
-    decLoopB 0x100 do
+    ld C 158
+    decLoopB 11 do
         ld [HL] C
         inc C
         inc HL
