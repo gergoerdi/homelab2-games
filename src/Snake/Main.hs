@@ -254,40 +254,42 @@ isInBounds MkLocs{..} = mdo
         cp lastRowStartL
         jp NC outOfBounds
 
-    -- Skip vertical borders: keep subtracting numCols until we get 0 or -1
+    -- Skip vertical borders
+    -- Fast check: if last nybble is not 0, 8, 1 or 9, then definitely not on vertical border
+    ld A L
+    Z80.and 0b0000_0110
+    ret NZ
+
+    -- Slow check: keep subtracting `numCols / 2` from `HL / 2` until we get 0
     push HL
     push DE
-    ld DE (negate numCols)
-    withLabel \loop -> mdo
+
+    srl H
+    rr L
+    ld DE (negate $ numCols `div` 2)
+    loopForever mdo
         ld A H
-        cp 0xc0
+        cp $ 0xc0 `div` 2
         jp NZ next
         ld A L
-        cp numCols
+        cp (numCols `div` 2)
         jp Z outOfBounds'
+
+        -- If we've passed `numCols / 2`, we know we're inbound, and NZ was set previously. Otherwise, loop.
         jp NC next
-        cp 0x01
-        jp Z outOfBounds'
-        jp inBounds
+        pop DE
+        pop HL
+        ret
 
         next <- label
         add HL DE
-        jp loop
 
-        inBounds <- labelled do
-            pop DE
-            pop HL
-            ld A 0xff
-            ret
-
-        outOfBounds' <- labelled do
-            pop DE
-            pop HL
-            jp outOfBounds
-        pure ()
-
+    outOfBounds' <- labelled do
+        pop DE
+        pop HL
     outOfBounds <- labelled $ do
-        Z80.xor A
+        -- Set Z flag
+        cp A
         ret
     pure ()
 
