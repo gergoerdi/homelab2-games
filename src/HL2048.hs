@@ -18,10 +18,14 @@ numRows = 25
 space :: Word8
 space = 0x20
 
+tileHeight :: Num a => a
+tileHeight = 2
+
+tileWidth :: Num a => a
+tileWidth = 3
+
 data Locations = MkLocs
   { drawTileF :: Location
-  , clearTileF :: Location
   , screenBuf :: Location
-  , anim :: Location
-  , animSub :: Location
+  , tileValues, tileSpeeds, tileOffs :: Location
   }
