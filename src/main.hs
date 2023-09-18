@@ -4,6 +4,7 @@ module Main where
 
 import Tetris.Main
 import Snake.Main
+import qualified HL2048.Main as HL2048
 
 import Z80
 import Data.Word
@@ -20,7 +21,8 @@ main = do
     block = org 20000 do
         -- booter
         -- tetris
-        snake
+        -- snake
+        HL2048.game
 
 labelASCII :: Location -> [Word8]
 labelASCII loc = map (+ 0x30) $ digits
