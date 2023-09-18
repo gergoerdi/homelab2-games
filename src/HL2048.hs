@@ -21,4 +21,7 @@ space = 0x20
 data Locations = MkLocs
   { drawTileF :: Location
   , clearTileF :: Location
+  , screenBuf :: Location
+  , anim :: Location
+  , animSub :: Location
   }
