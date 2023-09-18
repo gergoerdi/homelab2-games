@@ -1,3 +1,4 @@
+{-# LANGUAGE BlockArguments, RecursiveDo #-}
 module HL2048.Input where
 
 import HL2048
@@ -5,9 +6,17 @@ import Z80
 import Z80.Utils
 
 dispatchInput :: Location -> Location -> Location -> Location -> Z80ASM
-dispatchInput north south east west = do
+dispatchInput north south east west = skippable \end -> mdo
     ld A [0x3adf]
+    cp 0xff
+    jp Z isReleased
+
     ld C A
+    ld A [released]
+    cp 0
+    jp Z end -- Avoid held keys repeating
+    ldVia A [released] 0
+    ld A C
 
     -- Check "i"
     rra
@@ -22,3 +31,12 @@ dispatchInput north south east west = do
     -- Check "l"
     rra
     jp NC east
+    jp end
+
+    isReleased <- labelled do
+        ldVia A [released] 1
+        jp end
+
+
+    released <- labelled $ db [1]
+    pure ()

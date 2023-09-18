@@ -1,7 +1,10 @@
 {-# LANGUAGE NumericUnderscores, BlockArguments, BinaryLiterals, RecordWildCards #-}
 {-# LANGUAGE RecursiveDo #-}
 {-# LANGUAGE FlexibleContexts #-}
-module HL2048.Draw (clearScreen, drawScreen, drawTile, prepareGrid) where
+module HL2048.Draw
+    ( clearScreen, drawScreen, drawTile, prepareGrid
+    , calcMoveN, calcMoveS, calcMoveE, calcMoveW
+    ) where
 
 import HL2048
 import HL2048.Input
@@ -216,41 +219,50 @@ drawTiles locs@MkLocs{..} = mdo
         add HL BC
         ld A [HL]
 
-        -- -- Rightwards move
-        -- ld E A
-        -- add IX DE
-
-        -- -- Leftwards move: negate DE
-        -- neg
-        -- ld E A
-        -- skippable \isZero -> do
-        --     jp Z isZero
-        --     ld D 0xff
-        -- add IX DE
-
-        -- -- Downwards move: multiply DE by 40 using a lookup table
-        -- ld E A
-        -- ld HL times40
-        -- add HL DE
-        -- add HL DE
-        -- ld E [HL]
-        -- inc HL
-        -- ld D [HL]
-        -- add IX DE
-
-        -- Upwards move: multiply DE by -40 using a lookup table
-        ld E A
-        ld HL timesNeg40
-        add HL DE
-        add HL DE
-        ld E [HL]
-        inc HL
-        ld D [HL]
+        call calcMoveF
         add IX DE
 
         jp drawTileF -- drawTileF will return for us!
 
-    times40 <- labelled $ dw [ i * numCols | i <- [0.. 4 * (tileHeight + 3)] ]
-    timesNeg40 <- labelled $ dw [ negate i * numCols | i <- [0.. 4 * (tileHeight + 3)] ]
+    pure ()
 
+-- | Pre: `D` is 0
+-- | Pre: `A` is the amount to offset
+-- | Post: `DE` is the tile delta
+calcMoveN, calcMoveS, calcMoveE, calcMoveW :: Z80ASM
+calcMoveE = do
+    ld E A
+    ret
+
+calcMoveW = do
+    neg
+    ld E A
+    ret Z
+    ld D 0xff
+    ret
+
+calcMoveS = mdo
+    ld E A
+    ld HL times40
+    add HL DE
+    add HL DE
+    ld E [HL]
+    inc HL
+    ld D [HL]
+    ret
+
+    times40 <- labelled $ dw [ i * numCols | i <- [0.. 4 * (tileHeight + 3)] ]
+    pure ()
+
+calcMoveN = mdo
+    ld E A
+    ld HL timesNeg40
+    add HL DE
+    add HL DE
+    ld E [HL]
+    inc HL
+    ld D [HL]
+    ret
+
+    timesNeg40 <- labelled $ dw [ negate i * numCols | i <- [0.. 4 * (tileHeight + 3)] ]
     pure ()

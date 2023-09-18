@@ -22,27 +22,113 @@ game = mdo
     clearScreen locs
     prepareGrid locs
 
-    loopForever do
-        ld B $ tileHeight + 3
-        withLabel \loop -> do
-            push BC
-            call drawScreenF
-            call moveTilesF
-            halt
-            pop BC
-            dec B
-            jp NZ loop
+    withLabel \loop -> mdo
+        halt
+        call drawScreenF
 
-        loopForever do
-            call drawScreenF
-            halt
+        ld HL tileOffs
+        decLoopB 16 do
+            ld [HL] 0
+            inc HL
+
+        dispatchInput north south east west
+        jp loop
+
+        north <- labelled do
+            -- Demo stuff
+            ld DE tileSpeeds
+            ld HL tileSpeedsN
+            ld BC 16
+            ldir
+
+            ldVia DE [calcMoveSlot] calcMoveNF
+            decLoopB (tileHeight + 3) do
+                push BC
+                call moveTilesF
+                halt
+                call drawScreenF
+                pop BC
+            jp loop
+
+        south <- labelled do
+            -- Demo stuff
+            ld DE tileSpeeds
+            ld HL tileSpeedsS
+            ld BC 16
+            ldir
+
+            ldVia DE [calcMoveSlot] calcMoveSF
+            decLoopB (tileHeight + 3) do
+                push BC
+                call moveTilesF
+                halt
+                call drawScreenF
+                pop BC
+            jp loop
+
+        east <- labelled do
+            -- Demo stuff
+            ld DE tileSpeeds
+            ld HL tileSpeedsE
+            ld BC 16
+            ldir
+
+            ldVia DE [calcMoveSlot] calcMoveEF
+            decLoopB (tileWidth + 3) do
+                push BC
+                call moveTilesF
+                halt
+                call drawScreenF
+                pop BC
+            jp loop
+
+        west <- labelled do
+            -- Demo stuff
+            ld DE tileSpeeds
+            ld HL tileSpeedsW
+            ld BC 16
+            ldir
+
+            ldVia DE [calcMoveSlot] calcMoveWF
+            decLoopB (tileWidth + 3) do
+                push BC
+                call moveTilesF
+                halt
+                call drawScreenF
+                pop BC
+            jp loop
+
+        pure ()
+
+
+        -- ld B $ tileHeight + 3
+        -- withLabel \loop -> do
+        --     push BC
+        --     call drawScreenF
+        --     call moveTilesF
+        --     halt
+        --     pop BC
+        --     dec B
+        --     jp NZ loop
+
+        -- loopForever do
+        --     call drawScreenF
+        --     halt
 
     loopForever $ pure ()
 
     drawTileF <- labelled drawTile
     moveTilesF <- labelled $ moveTiles locs
     drawScreenF <- labelled $ drawScreen locs
-    anim <- labelled $ db [0]
+
+    calcMoveNF <- labelled calcMoveN
+    calcMoveSF <- labelled calcMoveS
+    calcMoveEF <- labelled calcMoveE
+    calcMoveWF <- labelled calcMoveW
+
+    calcMoveF <- labelled do
+        jp calcMoveEF
+    let calcMoveSlot = calcMoveF + 1
 
     tileValues <- labelled $ db
       [ 12, 0, 0, 0
@@ -51,45 +137,40 @@ game = mdo
       , 1, 2, 0, 0
       ]
 
-    -- -- Test: right move
-    -- tileSpeeds <- labelled $ db
-    --   [ 1, 0, 0, 0
-    --   , 3, 0, 1, 0
-    --   , 3, 0, 0, 0
-    --   , 2, 2, 0, 0
-    --   ]
+    -- Test: right move
+    tileSpeedsE <- labelled $ db
+      [ 1, 0, 0, 0
+      , 3, 0, 1, 0
+      , 3, 0, 0, 0
+      , 2, 2, 0, 0
+      ]
 
-    -- -- Test: left move
-    -- tileSpeeds <- labelled $ db
-    --   [ 0, 0, 0, 0
-    --   , 0, 0, 2, 0
-    --   , 0, 0, 0, 3
-    --   , 0, 1, 0, 0
-    --   ]
+    -- Test: left move
+    tileSpeedsW <- labelled $ db
+      [ 0, 0, 0, 0
+      , 0, 0, 2, 0
+      , 0, 0, 0, 3
+      , 0, 1, 0, 0
+      ]
 
-    -- -- Test: down move
-    -- tileSpeeds <- labelled $ db
-    --   [ 1, 0, 0, 0
-    --   , 1, 0, 2, 0
-    --   , 1, 0, 0, 1
-    --   , 0, 0, 0, 0
-    --   ]
+    -- Test: down move
+    tileSpeedsS <- labelled $ db
+      [ 1, 0, 0, 0
+      , 1, 0, 2, 0
+      , 1, 0, 0, 1
+      , 0, 0, 0, 0
+      ]
 
     -- Test: up move
-    tileSpeeds <- labelled $ db
+    tileSpeedsN <- labelled $ db
       [ 0, 0, 0, 0
       , 0, 0, 1, 0
       , 1, 0, 0, 2
       , 1, 3, 0, 0
       ]
 
-    tileOffs <- labelled $ db
-      [ 0, 0, 0, 0
-      , 0, 0, 0, 0
-      , 0, 0, 0, 0
-      , 0, 0, 0, 0
-      ]
-
+    tileSpeeds <- labelled $ resb 16
+    tileOffs <- labelled $ resb 16
     screenBuf <- labelled $ resb $ 40 * 25
     pure ()
 
