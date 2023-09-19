@@ -7,16 +7,18 @@ import Snake.Main
 import qualified HL2048.Main as HL2048
 
 import Z80
+import Z80.Utils
 import Data.Word
 import qualified Data.ByteString as BS
 import Control.Monad
 import Data.Bits
 import Data.Char
 import Text.Printf
+import Data.String (fromString)
 
 main :: IO ()
 main = do
-    BS.writeFile "snake.obj" $ asmData block
+    BS.writeFile "snake.htp" $ htp (fromString "snake") block
   where
     block = org 20000 do
         -- booter
@@ -30,11 +32,34 @@ labelASCII loc = map (+ 0x30) $ digits
     -- The length of this has to be lazy in the actual value of `loc`
     digits = [fromIntegral $ (loc `div` (10 ^ i)) `mod` 10 | i <- [4, 3 .. 0]]
 
-booter :: Z80ASM
-booter = do
-    db [0x00, 0x00, 0xad] -- 0 CALL
-    rec
-        db $ labelASCII start
-        db [0x60, 0x7f, 0xff, 0x91, 0x3a]
-        start <- label
-    pure ()
+htp :: BS.ByteString -> ASMBlock -> BS.ByteString
+htp label mainBlock = mconcat
+    [ leader
+    -- , record label $ sysvars $ asmOrg mainBlock
+    , record label $ org 0x4002 do
+            dw [asmOrg mainBlock]
+    , BS.singleton 0x01
+    , leader
+    , record mempty mainBlock
+    , BS.singleton 0x00
+    ]
+  where
+    leader = BS.replicate 100 0x00
+
+    record label block = mconcat
+        [ BS.singleton 0xa5
+        , label
+        , BS.singleton 0x00
+        , word $ asmOrg block
+        , word . fromIntegral $ BS.length bs
+        , bs
+        , crc bs
+        ]
+      where
+        bs = asmData block
+
+    crc = BS.singleton . BS.foldr' (+) 0
+
+    word w = BS.pack [lo, hi]
+      where
+        (lo, hi) = wordBytes w
