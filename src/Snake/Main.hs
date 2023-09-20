@@ -759,34 +759,83 @@ invert :: String -> String
 invert = map (chr . (+ 0x80) . ord)
 
 welcome :: Locations -> Z80ASM
-welcome locs@MkLocs{..} = skippable \end -> do
+welcome locs@MkLocs{..} = skippable \end -> mdo
     drawWelcome
     call gameOverTransitionF
-    -- loopForever do
-    --     ldVia A [tailIdx] 0
-    --     ldVia A [headIdx] 0
-    --     ldVia A [growth] 8
 
-    --     ld A 0b1110_1111
-    --     ld [lastInput] A
-    --     ld [currentDir] A
+    ldVia A [released] 0
 
-    --     let pos = videoStart + numCols * 13 + 19
-    --         (lo, hi) = wordBytes pos
-    --     ldVia A [segmentLo] lo
-    --     ldVia A [segmentHi] hi
-    --     ldVia A [segmentChar] headE
+    ldVia A [tailIdx] 0
+    ldVia A [headIdx] 0
+    ldVia A [growth] 8
 
-    --     call moveF
-    -- --     halt
-    -- --     call moveF
-    -- --     halt
-    -- --     call moveF
-    -- --     halt
-    -- --     call moveF
-    --     loopForever $ pure ()
+    let pos = videoStart + numCols * 13 + 19
+        (lo, hi) = wordBytes pos
+    ldVia A [segmentLo] lo
+    ldVia A [segmentHi] hi
+    ldVia A [segmentChar] headE
+
+    ld A 0b1110_1111
+    ld [lastInput] A
+    ld B 5
+    call animate
+
+    loopForever do
+        ld A 0b1111_0111
+        ld [lastInput] A
+        ld B 8
+        call animate
+
+        ld A 0b1111_1011
+        ld [lastInput] A
+        ld B 10
+        call animate
+
+        ld A 0b1111_1101
+        ld [lastInput] A
+        ld B 8
+        call animate
+
+        ld A 0b1110_1111
+        ld [lastInput] A
+        ld B 10
+        call animate
 
     call waitInputF
+    jp end
+
+    released <- labelled $ db [0]
+
+    animate <- labelled do
+        push BC
+        call moveF
+
+        decLoopB 4 do
+            skippable \keepWaiting -> do
+                skippable \checkPressed -> do
+                    ld HL released
+                    ld A [HL]
+                    cp 0
+                    jp Z checkPressed
+
+                    ld A [0x3adf]
+                    cpl
+                    Z80.and 0b0001_1110
+                    jp Z keepWaiting
+                    inc [HL]
+                    jp keepWaiting
+
+                ld A [0x3adf]
+                cpl
+                Z80.and 0b0001_1110
+                jp NZ end
+
+            halt
+        pop BC
+        dec B
+        jp NZ animate
+        ret
+    pure ()
 
 drawWelcome :: Z80ASM
 drawWelcome = do
