@@ -1,7 +1,7 @@
 {-# LANGUAGE NumericUnderscores, BlockArguments, BinaryLiterals, RecordWildCards #-}
 {-# LANGUAGE RecursiveDo #-}
 {-# LANGUAGE FlexibleContexts #-}
-module Snake.Main (snake) where
+module Snake.Main (game) where
 
 import Snake
 import Snake.Transitions
@@ -24,8 +24,8 @@ fruit = 0x74
 life :: Word8
 life = 0x0f
 
-snake :: Z80ASM
-snake = mdo
+game :: Z80ASM
+game = mdo
     let locs = MkLocs{..}
 
     clearScreen

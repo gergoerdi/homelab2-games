@@ -2,8 +2,8 @@
 {-# LANGUAGE RecursiveDo #-}
 module Main where
 
-import Tetris.Main
-import Snake.Main
+import qualified Tetris.Main as Tetris
+import qualified Snake.Main as Snake
 import qualified HL2048.Main as HL2048
 
 import Z80
@@ -15,16 +15,17 @@ import Data.Bits
 import Data.Char
 import Text.Printf
 import Data.String (fromString)
+import System.FilePath
 
 main :: IO ()
 main = do
-    BS.writeFile "snake.htp" $ htp (fromString "snake") block
-  where
-    block = org 20000 do
-        -- booter
-        -- tetris
-        -- snake
-        HL2048.game
+    emit "snake" $ org 0x4100 Snake.game
+    emit "hl2048" $ org 0x4100 HL2048.game
+
+emit :: String -> ASMBlock -> IO ()
+emit name block = do
+    BS.writeFile (name <.> "obj") $ asmData block
+    BS.writeFile (name <.> "htp") $ htp (fromString $ takeBaseName name) block
 
 labelASCII :: Location -> [Word8]
 labelASCII loc = map (+ 0x30) $ digits

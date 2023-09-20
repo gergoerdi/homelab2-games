@@ -10,6 +10,7 @@ dependencies:
   - base
   - z80
   - bytestring
+  - filepath
 
 source-dirs:
   - src
