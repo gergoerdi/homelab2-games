@@ -741,10 +741,23 @@ printCenteredLines base row = mapM_ (uncurry $ printCenteredLine base) . zip [ro
 gameOver :: Locations -> Z80ASM
 gameOver locs@MkLocs{..} = do
     call clearBufF
-    printCenteredLine videoBufStart 7 $ invert "GAME OVER"
+    ld IX $ videoBufStart + 0 * numCols
+    ld A 0x03
+    decLoopB (3 * numCols) $ do
+        ld [IX] A
+        inc IX
+    ld A 0xe0
+    decLoopB (3 * numCols) $ do
+        ld [IX] A
+        inc IX
+    ld A 0x03
+    decLoopB (3 * numCols) $ do
+        ld [IX] A
+        inc IX
+    printCenteredLine videoBufStart 4 $ invert "GAME OVER"
 
     let s = "SCORE: "
-    ld IX $ videoBufStart + numCols * 12 + (numCols - (fromIntegral (length s) + 3)) `div` 2
+    ld IX $ videoBufStart + numCols * 14 + (numCols - (fromIntegral (length s) + 3)) `div` 2
     rec
         ld IY text
         text <- stringLoopB s do
@@ -753,7 +766,7 @@ gameOver locs@MkLocs{..} = do
             inc IY
     call drawScoreF
 
-    printCenteredLine videoBufStart 22 "PRESS ANY DIRECTION TO START"
+    printCenteredLine videoBufStart 22 "PRESS ANY DIRECTION KEY TO START"
 
 invert :: String -> String
 invert = map (chr . (+ 0x80) . ord)
@@ -829,7 +842,6 @@ welcome locs@MkLocs{..} = skippable \end -> mdo
                 cpl
                 Z80.and 0b0001_1110
                 jp NZ end
-
             halt
         pop BC
         dec B
@@ -840,12 +852,28 @@ welcome locs@MkLocs{..} = skippable \end -> mdo
 drawWelcome :: Z80ASM
 drawWelcome = do
     clearBuf
-    printCenteredLines videoBufStart 5 lines
+    ld IX $ videoBufStart + 0 * numCols
+    ld A 0x03
+    decLoopB (1 * numCols) do
+        ld [IX] A
+        inc IX
+    ld A 0xe0
+    decLoopB (4 * numCols) do
+        ld [IX] A
+        inc IX
+    ld A 0x03
+    decLoopB (1 * numCols) do
+        ld [IX] A
+        inc IX
+    printCenteredLines videoBufStart 2 title
+    printCenteredLines videoBufStart 7 lines
   where
-    lines =
+    title =
       [ invert "SNAKE"
-      , " "
-      , "GOBBLE UP ALL NUMBERED FRUIT"
+      , invert "HTTPS://GERGO.ERDI.HU/"
+      ]
+    lines =
+      [ "GOBBLE UP ALL NUMBERED FRUIT"
       , "WITHOUT BITING YOUR OWN TAIL"
       , " "
       , "NEW LEVEL AFTER 9 FRUIT"
@@ -860,7 +888,7 @@ drawWelcome = do
       , " "
       , "K"
       , " "
-      , "PRESS ANY DIRECTION TO START"
+      , "PRESS ANY DIRECTION KEY TO START"
       ]
 
 waitInput :: Z80ASM
