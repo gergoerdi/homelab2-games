@@ -16,14 +16,16 @@ import Data.Char
 import Text.Printf
 import Data.String (fromString)
 import System.FilePath
+import System.Directory
 
 main :: IO ()
 main = do
-    emit "snake" $ org 0x4100 Snake.game
-    emit "hl2048" $ org 0x4100 HL2048.game
+    emit "_build/snake" $ org 0x4100 Snake.game
+    emit "_build/hl2048" $ org 0x4100 HL2048.game
 
 emit :: String -> ASMBlock -> IO ()
 emit name block = do
+    createDirectoryIfMissing True (takeDirectory name)
     BS.writeFile (name <.> "obj") $ asmData block
     BS.writeFile (name <.> "htp") $ htp (fromString $ takeBaseName name) block
 
