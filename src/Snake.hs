@@ -28,6 +28,7 @@ data Locations = MkLocs
   , latchInputF, clearBufF, waitInputF
   , lastInput, currentDir
   , drawScoreF, gameOverTransitionF
+  , attractF
   , rng
   , fruitLoc, fruitNum
   , score, speed, lives :: Location

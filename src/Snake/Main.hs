@@ -77,8 +77,6 @@ game = mdo
             pure ()
 
         gameOver locs
-        call gameOverTransitionF
-        call waitInputF
 
     moveF <- labelled $ move locs
     slitherF <- labelled $ slither locs
@@ -106,8 +104,8 @@ game = mdo
         gameOverTransition locs
         ret
 
-    prepareGameF <- labelled do
-        initGame locs
+    attractF <- labelled $ attract locs
+    prepareGameF <- labelled $ initGame locs
     prepareLevelF <- labelled do
         call clearBufF
         initLevel locs
@@ -318,7 +316,6 @@ deathTransition = transition 0x79 curtainH
 
 gameOverTransition :: Locations -> Z80ASM
 gameOverTransition = transition 0x83 scramble
-
 
 drawBorder :: Z80ASM
 drawBorder = do
@@ -757,7 +754,7 @@ gameOver locs@MkLocs{..} = do
     printCenteredLine videoBufStart 4 $ invert "GAME OVER"
 
     let s = "SCORE: "
-    ld IX $ videoBufStart + numCols * 14 + (numCols - (fromIntegral (length s) + 3)) `div` 2
+    ld IX $ videoBufStart + numCols * 15 + (numCols - (fromIntegral (length s) + 3)) `div` 2
     rec
         ld IY text
         text <- stringLoopB s do
@@ -766,56 +763,45 @@ gameOver locs@MkLocs{..} = do
             inc IY
     call drawScoreF
 
-    printCenteredLine videoBufStart 22 "PRESS ANY DIRECTION KEY TO START"
+    printCenteredLine videoBufStart 22 "PRESS ANY DIRECTION KEY"
 
-invert :: String -> String
-invert = map (chr . (+ 0x80) . ord)
-
-welcome :: Locations -> Z80ASM
-welcome locs@MkLocs{..} = skippable \end -> mdo
-    drawWelcome
     call gameOverTransitionF
-
-    ldVia A [released] 0
 
     ldVia A [tailIdx] 0
     ldVia A [headIdx] 0
     ldVia A [growth] 8
 
-    let pos = videoStart + numCols * 13 + 19
+    let pos = videoStart + numCols * 11 + 19
         (lo, hi) = wordBytes pos
     ldVia A [segmentLo] lo
     ldVia A [segmentHi] hi
+    call attractF
+
+invert :: String -> String
+invert = map (chr . (+ 0x80) . ord)
+
+keyE = 0b1110_1111
+keyS = 0b1111_0111
+keyW = 0b1111_1011
+keyN = 0b1111_1101
+
+attract :: Locations -> Z80ASM
+attract locs@MkLocs{..} = mdo
     ldVia A [segmentChar] headE
 
-    ld A 0b1110_1111
+    ldVia A [released] 0
+
+    ld A keyE
     ld [lastInput] A
-    ld B 5
+    ld B 7
     call animate
 
     loopForever do
-        ld A 0b1111_0111
-        ld [lastInput] A
-        ld B 8
-        call animate
-
-        ld A 0b1111_1011
-        ld [lastInput] A
-        ld B 10
-        call animate
-
-        ld A 0b1111_1101
-        ld [lastInput] A
-        ld B 8
-        call animate
-
-        ld A 0b1110_1111
-        ld [lastInput] A
-        ld B 10
-        call animate
-
-    call waitInputF
-    jp end
+        forM_ [(keyS, 8), (keyW, 14), (keyN, 8), (keyE, 14)] \(key, n) -> do
+            ld A key
+            ld [lastInput] A
+            ld B n
+            call animate
 
     released <- labelled $ db [0]
 
@@ -847,7 +833,28 @@ welcome locs@MkLocs{..} = skippable \end -> mdo
         dec B
         jp NZ animate
         ret
+
+    end <- labelled do
+        pop BC -- Restore stack
+        pop AF -- We want to return two layers, so discard first return pointer
+        ret
     pure ()
+
+
+welcome :: Locations -> Z80ASM
+welcome locs@MkLocs{..} = do
+    drawWelcome
+    call gameOverTransitionF
+
+    ldVia A [tailIdx] 0
+    ldVia A [headIdx] 0
+    ldVia A [growth] 8
+
+    let pos = videoStart + numCols * 13 + 19
+        (lo, hi) = wordBytes pos
+    ldVia A [segmentLo] lo
+    ldVia A [segmentHi] hi
+    call attractF
 
 drawWelcome :: Z80ASM
 drawWelcome = do
