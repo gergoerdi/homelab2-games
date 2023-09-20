@@ -24,10 +24,10 @@ data Locations = MkLocs
   , newHead
   , bodyDispatchTrampoline
   , bodyDispatch
-  , slitherF, lfsr10F, isInBoundsF, randomizeF, placeFruitF
+  , moveF, slitherF, lfsr10F, isInBoundsF, randomizeF, placeFruitF
   , latchInputF, clearBufF, waitInputF
   , lastInput, currentDir
-  , drawScoreF
+  , drawScoreF, gameOverTransitionF
   , rng
   , fruitLoc, fruitNum
   , score, speed, lives :: Location

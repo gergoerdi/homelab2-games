@@ -30,8 +30,6 @@ game = mdo
 
     loopForever do
         welcome locs
-        call gameOverTransitionF
-        call waitInputF
 
         call clearBufF
         call prepareGameF
@@ -62,7 +60,7 @@ game = mdo
                     call latchInputF
                     djnz loop
                 ldVia A [currentDir] [lastInput]
-                move locs
+                call moveF
                 jp Z loop
 
             ld A [lives]
@@ -82,6 +80,7 @@ game = mdo
         call gameOverTransitionF
         call waitInputF
 
+    moveF <- labelled $ move locs
     slitherF <- labelled $ slither locs
     latchInputF <- labelled $ latchInput locs
     lfsr10F <- labelled $ lfsr10
@@ -659,7 +658,7 @@ latchInput MkLocs{..} = do
 
 -- | Post: `NZ` iff collision
 move :: Locations -> Z80ASM
-move locs@MkLocs{..} = skippable $ \end -> do
+move locs@MkLocs{..} = do
     ld A [lastInput]
     rec
         -- Check "i"
@@ -676,7 +675,7 @@ move locs@MkLocs{..} = skippable $ \end -> do
         rra
         jp NC moveE
         setZ
-        jp end
+        ret
 
         moveS <- labelled do
             setupSlither locs (0, 1) headS $
@@ -713,8 +712,7 @@ move locs@MkLocs{..} = skippable $ \end -> do
 
         move <- labelled do
             call slitherF
-
-    pure ()
+    ret
 
 finishLevel :: Locations -> Z80ASM
 finishLevel locs@MkLocs{..} = do
@@ -761,7 +759,37 @@ invert :: String -> String
 invert = map (chr . (+ 0x80) . ord)
 
 welcome :: Locations -> Z80ASM
-welcome locs@MkLocs{..} = do
+welcome locs@MkLocs{..} = skippable \end -> do
+    drawWelcome
+    call gameOverTransitionF
+    -- loopForever do
+    --     ldVia A [tailIdx] 0
+    --     ldVia A [headIdx] 0
+    --     ldVia A [growth] 8
+
+    --     ld A 0b1110_1111
+    --     ld [lastInput] A
+    --     ld [currentDir] A
+
+    --     let pos = videoStart + numCols * 13 + 19
+    --         (lo, hi) = wordBytes pos
+    --     ldVia A [segmentLo] lo
+    --     ldVia A [segmentHi] hi
+    --     ldVia A [segmentChar] headE
+
+    --     call moveF
+    -- --     halt
+    -- --     call moveF
+    -- --     halt
+    -- --     call moveF
+    -- --     halt
+    -- --     call moveF
+    --     loopForever $ pure ()
+
+    call waitInputF
+
+drawWelcome :: Z80ASM
+drawWelcome = do
     clearBuf
     printCenteredLines videoBufStart 5 lines
   where
