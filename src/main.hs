@@ -20,8 +20,8 @@ import System.Directory
 
 main :: IO ()
 main = do
-    emit "_build/snake" $ org 0x4100 Snake.game
-    emit "_build/hl2048" $ org 0x4100 HL2048.game
+    emit "_build/snake" $ org 20000 Snake.game
+    emit "_build/hl2048" $ org 20000 HL2048.game
 
 emit :: String -> ASMBlock -> IO ()
 emit name block = do
