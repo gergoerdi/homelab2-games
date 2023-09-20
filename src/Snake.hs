@@ -19,16 +19,16 @@ space :: Word8
 space = 0x20
 
 data Locations = MkLocs
-  { headIdx :: Location
-  , tailIdx :: Location
-  , growth :: Location
-  , segmentLo, segmentHi, segmentChar :: Location
-  , newHead :: Location
-  , bodyDispatchTrampoline :: Location
-  , bodyDispatch :: Location
-  , slitherF, lfsr10F, isInBoundsF, randomizeF, placeFruitF :: Location
-  , lastInput, currentDir :: Location
-  , rng :: Location
-  , fruitLoc, fruitNum :: Location
+  { headIdx, tailIdx, growth
+  , segmentLo, segmentHi, segmentChar
+  , newHead
+  , bodyDispatchTrampoline
+  , bodyDispatch
+  , slitherF, lfsr10F, isInBoundsF, randomizeF, placeFruitF
+  , latchInputF, clearBufF, waitInputF
+  , lastInput, currentDir
+  , drawScoreF
+  , rng
+  , fruitLoc, fruitNum
   , score, speed, lives :: Location
   }

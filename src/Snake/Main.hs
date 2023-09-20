@@ -28,16 +28,19 @@ game :: Z80ASM
 game = mdo
     let locs = MkLocs{..}
 
-    clearScreen
-    drawBorder
-
-    call prepareGameF
-    showBuf
-
     loopForever do
+        welcome locs
+        call gameOverTransitionF
+        call waitInputF
+
+        call clearBufF
+        call prepareGameF
+        drawBorder
+        call gameOverTransitionF
+
         skippable \gameOver -> loopForever mdo
             withLabel \loop -> mdo
-                call drawScoreF
+                call drawUIF
 
                 ld A [fruitNum]
                 cp 10
@@ -67,7 +70,7 @@ game = mdo
             jp Z gameOver
             dec A
             ld [lives] A
-            call drawScoreF
+            call drawUIF
 
             call prepareLevelF
             deathTransition locs
@@ -75,8 +78,9 @@ game = mdo
             newLevel <- label
             pure ()
 
-        call prepareGameF
-        gameOverTransition locs
+        gameOver locs
+        call gameOverTransitionF
+        call waitInputF
 
     slitherF <- labelled $ slither locs
     latchInputF <- labelled $ latchInput locs
@@ -85,12 +89,28 @@ game = mdo
     isInBoundsF <- labelled $ isInBounds locs
     randomizeF <- labelled $ randomize locs
     placeFruitF <- labelled $ placeFruit locs
-    drawScoreF <- labelled $ drawScore locs
+    drawScoreF <- labelled $ do
+        drawScore locs
+        ret
 
-    prepareGameF <- labelled $ do
-        initGame locs
-    prepareLevelF <- labelled $ do
+    drawUIF <- labelled $ do
+        drawUI locs
+        ret
+
+    clearBufF <- labelled do
         clearBuf
+        ret
+    waitInputF <- labelled do
+        waitInput
+        ret
+    gameOverTransitionF <- labelled do
+        gameOverTransition locs
+        ret
+
+    prepareGameF <- labelled do
+        initGame locs
+    prepareLevelF <- labelled do
+        call clearBufF
         initLevel locs
         drawSnake locs
         drawFruitBuf locs
@@ -120,24 +140,22 @@ game = mdo
 clearScreen :: Z80ASM
 clearScreen = do
     ld HL videoStart
-    rec loop <- label
+    withLabel \loop -> do
         ld [HL] space
         inc HL
         ld A H
         cp 0xc4
         jp NZ loop
-    pure ()
 
 clearBuf :: Z80ASM
 clearBuf = do
     ld HL videoBufStart
-    rec loop <- label
+    withLabel \loop -> do
         ld [HL] space
         inc HL
         ld A H
         cp 0x74
         jp NZ loop
-    pure ()
 
 showBuf :: Z80ASM
 showBuf = do
@@ -311,18 +329,18 @@ drawBorder = do
 
 drawBorderH :: Z80ASM
 drawBorderH = do
-    ld IX videoStart
+    ld IX videoBufStart
     decLoopB numCols do
         ld [IX] wall
         inc IX
-    ld IX (videoStart + (numRows - 1) * numCols)
+    ld IX (videoBufStart + (numRows - 1) * numCols)
     decLoopB numCols do
         ld [IX] wall
         inc IX
 
 drawBorderV :: Z80ASM
 drawBorderV = do
-    ld IX (videoStart + numCols)
+    ld IX (videoBufStart + numCols)
     ld DE (numCols - 1)
     decLoopB (numRows - 2) do
         ld [IX] wall
@@ -333,14 +351,14 @@ drawBorderV = do
 drawText :: Z80ASM
 drawText = do
     rec
-        ld IX (videoStart + (numRows + 1) * numCols)
+        ld IX (videoBufStart + (numRows + 1) * numCols)
         ld IY text
         text <- stringLoopB "SCORE:" do
             ldVia A [IX] [IY]
             inc IX
             inc IY
     rec
-        ld IX (videoStart + (numRows + 1) * numCols + 25)
+        ld IX (videoBufStart + (numRows + 1) * numCols + 25)
         ld IY text
         text <- stringLoopB "LIVES:" do
             ldVia A [IX] [IY]
@@ -532,9 +550,15 @@ drawSnake MkLocs{..} = do
         inc C
         jp loop
 
+drawUI :: Locations -> Z80ASM
+drawUI locs@MkLocs{..} = do
+    ld IX (videoStart + (numRows + 1) * numCols + 10)
+    call drawScoreF
+    drawLives locs
+    ret
+
 drawScore :: Locations -> Z80ASM
 drawScore MkLocs{..} = do
-    ld IX (videoStart + (numRows + 1) * numCols + 10)
     ld IY (score + 2)
     decLoopB 3 do
         ld A [IY]
@@ -543,6 +567,8 @@ drawScore MkLocs{..} = do
         inc IX
         dec IY
 
+drawLives :: Locations -> Z80ASM
+drawLives MkLocs{..} = do
     ld IX (videoStart + (numRows + 1) * numCols + 33)
     ld A [lives]
     decLoopB 3 mdo
@@ -555,7 +581,6 @@ drawScore MkLocs{..} = do
         ld [IX] life
         next <- label
         inc IX
-    ret
 
 drawFruit :: Locations -> Z80ASM
 drawFruit MkLocs{..} = do
@@ -701,3 +726,77 @@ finishLevel locs@MkLocs{..} = do
     ld A [IX]
     dec A
     ld [IX] A
+
+printCenteredLine :: Location -> Location -> String -> Z80ASM
+printCenteredLine base row s = mdo
+    ld IX $ base + numCols * row + (numCols - fromIntegral (length s)) `div` 2
+    ld IY text
+    text <- stringLoopB s do
+        ldVia A [IX] [IY]
+        inc IX
+        inc IY
+    pure ()
+
+printCenteredLines :: Location -> Location -> [String] -> Z80ASM
+printCenteredLines base row = mapM_ (uncurry $ printCenteredLine base) . zip [row..]
+
+gameOver :: Locations -> Z80ASM
+gameOver locs@MkLocs{..} = do
+    call clearBufF
+    printCenteredLine videoBufStart 7 $ invert "GAME OVER"
+
+    let s = "SCORE: "
+    ld IX $ videoBufStart + numCols * 12 + (numCols - (fromIntegral (length s) + 3)) `div` 2
+    rec
+        ld IY text
+        text <- stringLoopB s do
+            ldVia A [IX] [IY]
+            inc IX
+            inc IY
+    call drawScoreF
+
+    printCenteredLine videoBufStart 22 "PRESS ANY DIRECTION TO START"
+
+invert :: String -> String
+invert = map (chr . (+ 0x80) . ord)
+
+welcome :: Locations -> Z80ASM
+welcome locs@MkLocs{..} = do
+    clearBuf
+    printCenteredLines videoBufStart 5 lines
+  where
+    lines =
+      [ invert "SNAKE"
+      , " "
+      , "GOBBLE UP ALL NUMBERED FRUIT"
+      , "WITHOUT BITING YOUR OWN TAIL"
+      , " "
+      , "NEW LEVEL AFTER 9 FRUIT"
+      , "SPEED GOES UP EVERY OTHER LEVEL"
+      , " "
+      , " "
+      , "I"
+      , " "
+      , "\x04"
+      , "J \x01\x73\x00 L"
+      , "\x05"
+      , " "
+      , "K"
+      , " "
+      , "PRESS ANY DIRECTION TO START"
+      ]
+
+waitInput :: Z80ASM
+waitInput = skippable \end -> do
+    -- Wait for release
+    withLabel \loop -> do
+        ld A [0x3adf]
+        cpl
+        Z80.and 0b0001_1110
+        jp NZ loop
+    -- Wait for press
+    withLabel \loop -> do
+        ld A [0x3adf]
+        cpl
+        Z80.and 0b0001_1110
+        jp Z loop

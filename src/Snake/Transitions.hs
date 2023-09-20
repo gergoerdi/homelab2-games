@@ -127,8 +127,8 @@ scramble MkLocs{..} = do
             ld H A
             ld L E
 
-            call isInBoundsF
-            jp Z next
+            -- call isInBoundsF
+            -- jp Z next
             ldVia A [HL] C
             cp 0
             jp NZ next
