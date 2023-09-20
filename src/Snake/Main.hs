@@ -63,9 +63,10 @@ game = mdo
                 jp Z loop
 
             ld A [lives]
+            Z80.and A
+            jp Z gameOver
             dec A
             ld [lives] A
-            jp Z gameOver
             call drawScoreF
 
             call prepareLevelF
@@ -154,7 +155,7 @@ showBuf = do
 initGame :: Locations -> Z80ASM
 initGame MkLocs{..} = do
     ldVia A [speed] 10
-    ldVia A [lives] 5
+    ldVia A [lives] 3
     ldVia A [fruitNum] 1
     ld A 0
     forM_ [0..2] \i -> ld [score + i] A
@@ -544,7 +545,7 @@ drawScore MkLocs{..} = do
 
     ld IX (videoStart + (numRows + 1) * numCols + 33)
     ld A [lives]
-    decLoopB 5 mdo
+    decLoopB 3 mdo
         cp B
         jp NC isLife
         ld [IX] space
