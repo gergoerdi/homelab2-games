@@ -53,22 +53,14 @@ prepareGrid MkLocs{..} = do
 
 blitGrid :: Locations -> Z80ASM
 blitGrid MkLocs{..} = do
-    ld DE $ videoStart + yoff + xoff + numCols
-    ld HL $ screenBuf + numCols + 1
+    let from = screenBuf + 1
+        to = videoStart + yoff + xoff
 
-    replicateM_ (4 * (tileHeight + 3) - 1) $ do
+    forM_ [1 .. 4 * (tileHeight + 3) - 1] \i -> do
+        ld HL $ from + i * numCols
+        ld DE $ to + i * numCols
         ld BC $ 4 * (tileWidth + 3)
         ldir
-        ld BC $ numCols - (4 * (tileWidth + 3))
-        add HL BC
-
-        push HL
-        push DE
-        pop HL
-        add HL BC
-        push HL
-        pop DE
-        pop HL
 
 gridX, gridH, gridV :: Word8
 gridX = 0x79
