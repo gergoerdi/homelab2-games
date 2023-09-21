@@ -22,7 +22,7 @@ tileHeight :: Num a => a
 tileHeight = 2
 
 tileWidth :: Num a => a
-tileWidth = 3
+tileWidth = 4
 
 data Locations = MkLocs
   { drawTileF :: Location

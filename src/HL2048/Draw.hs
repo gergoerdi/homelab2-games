@@ -78,7 +78,7 @@ drawGrid' = do
         add IX DE
         decLoopB (tileHeight + 2) do
             exx
-            gridSegment 0x00 gridV
+            gridSegment 0xfb gridV
             exx
             add IX DE
     gridSegment gridH gridX
@@ -186,10 +186,8 @@ drawTiles locs@MkLocs{..} = mdo
         call drawMovedTile
     ret
 
-    numbers <- labelled $ db $ mconcat . map mconcat $
-      [ [ [space, fromIntegral (ord '0') + i, space, space] | i <- [1..9] ]
-      , [ [fromIntegral (ord '1'), fromIntegral (ord '0') + i, space, space] | i <- [0..8] ]
-      ]
+    numbers <- labelled $ db $ mconcat
+      [ map (fromIntegral . ord) $ replicate (4 - length s) ' ' <> s | i <- [0..13], let s = show (2 ^ i) ]
 
     -- `IX` contains top left corner
     -- `BC` contains tile index in data structures
