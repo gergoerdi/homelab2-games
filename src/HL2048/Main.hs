@@ -42,12 +42,8 @@ game = mdo
             ldir
 
             ldVia DE [calcMoveSlot] calcMoveNF
-            decLoopB (tileHeight + 3) do
-                push BC
-                call moveTilesF
-                halt
-                call drawScreenF
-                pop BC
+            ld B $ tileHeight + 3
+            call animateMoveF
             jp loop
 
         south <- labelled do
@@ -58,12 +54,8 @@ game = mdo
             ldir
 
             ldVia DE [calcMoveSlot] calcMoveSF
-            decLoopB (tileHeight + 3) do
-                push BC
-                call moveTilesF
-                halt
-                call drawScreenF
-                pop BC
+            ld B $ tileHeight + 3
+            call animateMoveF
             jp loop
 
         east <- labelled do
@@ -74,12 +66,8 @@ game = mdo
             ldir
 
             ldVia DE [calcMoveSlot] calcMoveEF
-            decLoopB (tileWidth + 3) do
-                push BC
-                call moveTilesF
-                halt
-                call drawScreenF
-                pop BC
+            ld B $ tileWidth + 3
+            call animateMoveF
             jp loop
 
         west <- labelled do
@@ -90,12 +78,8 @@ game = mdo
             ldir
 
             ldVia DE [calcMoveSlot] calcMoveWF
-            decLoopB (tileWidth + 3) do
-                push BC
-                call moveTilesF
-                halt
-                call drawScreenF
-                pop BC
+            ld B $ tileWidth + 3
+            call animateMoveF
             jp loop
 
         pure ()
@@ -130,16 +114,84 @@ game = mdo
         jp calcMoveEF
     let calcMoveSlot = calcMoveF + 1
 
+    -- | Pre: `B` is number of frames to run
+    animateMoveF <- labelled do
+        withLabel \runAnim -> do
+            push BC
+            call moveTilesF
+            halt
+            call drawScreenF
+            pop BC
+            djnz runAnim
+
+        call applyStateF
+        ret
+
+    applyStateF <- labelled do
+        ld DE tileValues
+        ld HL tileValues'
+        ld BC 16
+        ldir
+        ret
+
+
+    rotateF <- labelled do
+        -- Maps the board state in tileValues
+        --
+        --   0123
+        --   4567
+        --   89ab
+        --   cdef
+        --
+        -- to the rotated state in tileValues'
+        --
+        --   c840
+        --   d951
+        --   ea62
+        --   fb73
+        --
+        ld IX $ tileValues + 15
+
+        ld D 0 -- DE: offset in target matrix, starts at 12 (see position of `f` above)
+        ld E 12
+        ld C 4 -- Stride for target matrix
+
+        decLoopB 16 $ skippable \next -> do
+            ld IY tileValues'
+            add IY DE
+            ldVia A [IY] [IX]
+
+            dec IX
+
+            ld A E
+            sub C
+            ld E A
+
+            -- If new input row, then we need to reset the target pointer
+            jp NC next
+            add A 17
+            ld E A
+
+        ret
+
     tileValues <- labelled $ db
-      [ 12, 0, 0, 0
-      , 1, 0, 1, 0
-      , 1, 0, 0, 1
-      , 1, 2, 0, 0
+      -- [ 12, 0, 0, 0
+      -- , 1, 0, 1, 0
+      -- , 1, 0, 0, 1
+      -- , 1, 2, 0, 0
+      -- ]
+      [ 1..16 ]
+
+    tileValues' <- labelled $ db
+      [ 0, 0, 0, 12
+      , 0, 0, 0, 2
+      , 0, 0, 0, 2
+      , 0, 0, 1, 2
       ]
 
     -- Test: right move
     tileSpeedsE <- labelled $ db
-      [ 1, 0, 0, 0
+      [ 3, 0, 0, 0
       , 3, 0, 1, 0
       , 3, 0, 0, 0
       , 2, 2, 0, 0

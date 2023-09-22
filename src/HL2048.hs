@@ -22,5 +22,5 @@ data Locations = MkLocs
   { drawTileF :: Location
   , calcMoveF :: Location
   , screenBuf :: Location
-  , tileValues, tileSpeeds, tileOffs :: Location
+  , tileValues, tileValues', tileSpeeds, tileOffs :: Location
   }
