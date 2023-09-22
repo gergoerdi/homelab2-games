@@ -4,6 +4,7 @@ module Z80.Utils where
 import Z80
 import Data.Word
 import Data.Bits
+import Data.Char
 
 skippable :: (Location -> Z80 a) -> Z80 a
 skippable body = do
@@ -36,3 +37,10 @@ setZ = cp A
 
 clearA :: Z80ASM
 clearA = Z80.xor A
+
+stringLoopB :: String -> Z80ASM -> Z80 Location
+stringLoopB s body = skippable \end -> mdo
+    decLoopB (fromIntegral $ length s) body
+    jp end
+    text <- labelled $ db $ map (fromIntegral . ord) s
+    pure text

@@ -8,6 +8,7 @@ import Snake.Transitions
 
 import Z80
 import Z80.Utils
+import HL2
 import Data.Word
 import Data.Int
 import Control.Monad
@@ -362,13 +363,6 @@ drawText = do
             inc IY
     pure ()
 
-stringLoopB :: String -> Z80ASM -> Z80 Location
-stringLoopB s body = skippable \end -> mdo
-    decLoopB (fromIntegral $ length s) body
-    jp end
-    text <- labelled $ db $ map (fromIntegral . ord) s
-    pure text
-
 bodyEW, bodyNS, bodySE, bodyNE :: Word8
 bodyEW = 0x91
 bodyNS = 0x90
@@ -721,19 +715,6 @@ finishLevel locs@MkLocs{..} = do
     ld A [IX]
     dec A
     ld [IX] A
-
-printCenteredLine :: Location -> Location -> String -> Z80ASM
-printCenteredLine base row s = mdo
-    ld IX $ base + numCols * row + (numCols - fromIntegral (length s)) `div` 2
-    ld IY text
-    text <- stringLoopB s do
-        ldVia A [IX] [IY]
-        inc IX
-        inc IY
-    pure ()
-
-printCenteredLines :: Location -> Location -> [String] -> Z80ASM
-printCenteredLines base row = mapM_ (uncurry $ printCenteredLine base) . zip [row..]
 
 gameOver :: Locations -> Z80ASM
 gameOver locs@MkLocs{..} = do

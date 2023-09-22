@@ -11,6 +11,8 @@ import HL2048.Input
 
 import Z80
 import Z80.Utils
+import HL2
+
 import Data.Word
 import Data.Int
 import Control.Monad
@@ -30,11 +32,13 @@ clearScreen MkLocs{..} = mdo
     cp 0xc4
     jp NZ loop
 
+    printCenteredLine videoStart 2 "HOMELAB-2048"
+
 xoff :: Integral a => a
 xoff = (numCols - 4 * (tileWidth + 3)) `div` 2
 
 yoff :: Integral a => a
-yoff = numCols * ((numRows - 4 * (tileHeight + 3)) `div` 2)
+yoff = numCols * (((numRows - 4 * (tileHeight + 3)) `div` 2) + 2)
 
 drawGrid :: Z80ASM
 drawGrid = do

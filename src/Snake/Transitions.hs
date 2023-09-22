@@ -7,6 +7,7 @@ import Snake
 
 import Z80
 import Z80.Utils
+import HL2
 import Data.Word
 import Data.Int
 import Control.Monad
