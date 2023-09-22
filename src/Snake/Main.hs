@@ -208,7 +208,7 @@ initLevel MkLocs{..} = do
     call placeFruitF
 
 placeFruit :: Locations -> Z80ASM
-placeFruit MkLocs{..} = withLabel \loop -> do
+placeFruit MkLocs{..} = loopForever do
     call randomizeF
     ldVia A [fruitLoc] [rng]
     ld L A
@@ -218,8 +218,7 @@ placeFruit MkLocs{..} = withLabel \loop -> do
     ld [fruitLoc + 1] A
     ld H A
     call isInBoundsF
-    jp Z loop
-    ret
+    ret NZ
 
 -- | An 10-bit maximal LFSR
 -- | Pre: `DE` is the current state
