@@ -513,6 +513,13 @@ setupSlither locs@MkLocs{..} (dx, dy) newHeadChar bodyMap = do
     inc HL
     ldVia A [HL] hi
 
+vidToBufHL :: Z80ASM
+vidToBufHL = do
+    ld A H
+    Z80.and $ complement 0xc0
+    Z80.or 0x70
+    ld H A
+
 drawSnake :: Locations -> Z80ASM
 drawSnake MkLocs{..} = do
     ld B 0
@@ -520,12 +527,9 @@ drawSnake MkLocs{..} = do
     ldVia A E [headIdx]
 
     withLabel \loop -> skippable \end -> do
-        -- Set HL to target video address
+        -- Set HL to target video buffer address
         loadArray H (segmentHi, BC)
-        ld A H
-        Z80.and $ complement 0xc0
-        Z80.or 0x70
-        ld H A
+        vidToBufHL
 
         loadArray L (segmentLo, BC)
 
@@ -582,11 +586,8 @@ drawFruit MkLocs{..} = do
 
 drawFruitBuf :: Locations -> Z80ASM
 drawFruitBuf MkLocs{..} = do
-    ldVia A L [fruitLoc]
-    ld A [fruitLoc + 1]
-    Z80.and $ complement 0xc0
-    Z80.or 0x70
-    ld H A
+    ld HL [fruitLoc]
+    vidToBufHL
 
     ld A [fruitNum]
     add A $ fromIntegral $ ord '0'
