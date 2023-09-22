@@ -34,7 +34,7 @@ game = mdo
 
         call clearBufF
         call prepareGameF
-        drawBorder
+        call drawBorderF
         call gameOverTransitionF
 
         skippable \gameOver -> loopForever mdo
@@ -87,16 +87,18 @@ game = mdo
     isInBoundsF <- labelled $ isInBounds locs
     randomizeF <- labelled $ randomize locs
     placeFruitF <- labelled $ placeFruit locs
-    drawScoreF <- labelled $ do
+
+    drawScoreF <- labelled do
         drawScore locs
         ret
-
-    drawUIF <- labelled $ do
+    drawUIF <- labelled do
         drawUI locs
         ret
-
     clearBufF <- labelled do
         clearBuf
+        ret
+    drawBorderF <- labelled do
+        drawBorder
         ret
     waitInputF <- labelled do
         waitInput
@@ -109,6 +111,7 @@ game = mdo
     prepareGameF <- labelled $ initGame locs
     prepareLevelF <- labelled do
         call clearBufF
+        call drawBorderF
         initLevel locs
         drawSnake locs
         drawFruitBuf locs
@@ -250,6 +253,17 @@ randomize MkLocs{..} = do
 -- | Post: `Z` iff out of bounds
 isInBounds :: Locations -> Z80ASM
 isInBounds MkLocs{..} = mdo
+    -- Check for empty space
+    push HL
+    vidToBufHL
+    ld A [HL]
+    pop HL
+    cp space
+    jp NZ outOfBounds
+    ld A [HL]
+    cp space
+    jp NZ outOfBounds
+
     -- Skip top border
     skippable \notTop -> do
         ld A H
@@ -271,39 +285,11 @@ isInBounds MkLocs{..} = mdo
         cp lastRowStartL
         jp NC outOfBounds
 
-    -- Skip vertical borders
-    -- Fast check: if last nybble is not 0, 8, 1 or 9, then definitely not on vertical border
-    ld A L
-    Z80.and 0b0000_0110
-    ret NZ
+    -- In bounds -- return NZ
+    ld A 0
+    inc A
+    ret
 
-    -- Slow check: keep subtracting `numCols / 2` from `HL / 2` until we get 0
-    push HL
-    push DE
-
-    srl H
-    rr L
-    ld DE (negate $ numCols `div` 2)
-    loopForever mdo
-        ld A H
-        cp $ 0xc0 `div` 2
-        jp NZ next
-        ld A L
-        cp (numCols `div` 2)
-        jp Z outOfBounds'
-
-        -- If we've passed `numCols / 2`, we know we're inbound, and NZ was set previously. Otherwise, loop.
-        jp NC next
-        pop DE
-        pop HL
-        ret
-
-        next <- label
-        add HL DE
-
-    outOfBounds' <- labelled do
-        pop DE
-        pop HL
     outOfBounds <- labelled $ do
         setZ
         ret

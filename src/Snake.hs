@@ -19,7 +19,7 @@ data Locations = MkLocs
   , bodyDispatchTrampoline
   , bodyDispatch
   , moveF, slitherF, lfsr10F, isInBoundsF, randomizeF, placeFruitF
-  , latchInputF, clearBufF, waitInputF
+  , latchInputF, clearBufF, drawBorderF, waitInputF
   , lastInput, currentDir
   , drawScoreF, gameOverTransitionF
   , attractF
