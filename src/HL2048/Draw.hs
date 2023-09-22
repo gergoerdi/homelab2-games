@@ -63,7 +63,7 @@ blitGrid MkLocs{..} = do
     forM_ [1 .. 4 * (tileHeight + 3) - 1] \i -> do
         ld HL $ from + i * numCols
         ld DE $ to + i * numCols
-        ld BC $ 4 * (tileWidth + 3)
+        ld BC $ 4 * (tileWidth + 3) - 1
         ldir
 
 gridX, gridH, gridV :: Word8
