@@ -173,7 +173,7 @@ showBuf = do
 
 initGame :: Locations -> Z80ASM
 initGame MkLocs{..} = do
-    ldVia A [speed] 10
+    ldVia A [speed] 20
     ldVia A [lives] 3
     ldVia A [fruitNum] 1
     ld A 0
