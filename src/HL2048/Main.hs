@@ -22,14 +22,14 @@ game = mdo
     clearScreen locs
     prepareGrid locs
 
+    ld HL tileOffs
+    decLoopB 16 do
+        ld [HL] 0
+        inc HL
     withLabel \loop -> mdo
         halt
         call drawScreenF
 
-        ld HL tileOffs
-        decLoopB 16 do
-            ld [HL] 0
-            inc HL
 
         dispatchInput north south east west
         jp loop
@@ -103,7 +103,9 @@ game = mdo
 
     drawTileF <- labelled drawTile
     moveTilesF <- labelled $ moveTiles locs
-    drawScreenF <- labelled $ drawScreen locs
+    drawScreenF <- labelled $ do
+        drawScreen locs
+        ret
 
     calcMoveNF <- labelled calcMoveN
     calcMoveSF <- labelled calcMoveS

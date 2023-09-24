@@ -63,8 +63,9 @@ blitGrid MkLocs{..} = do
     forM_ [1 .. 4 * (tileHeight + 3) - 1] \i -> do
         ld HL $ from + i * numCols
         ld DE $ to + i * numCols
-        ld BC $ 4 * (tileWidth + 3) - 1
-        ldir
+        replicateM_ (4 * (tileWidth + 3) - 1) do
+            ldi
+
 
 gridX, gridH, gridV :: Word8
 gridX = 0x79
@@ -73,8 +74,7 @@ gridV = 0xea
 
 drawGrid' :: Z80ASM
 drawGrid' = do
-    ld D 0
-    ld E $ numCols - (4 * (tileWidth + 3)) - 1
+    ld DE $ numCols - (4 * (tileWidth + 3)) - 1
     replicateM_ 4 do
         exx
         gridSegment gridH gridX
@@ -112,51 +112,46 @@ drawTile = do
     -- Top
     ld [IX] 0x6e
     inc IX
-    decLoopB tileWidth do
+    replicateM_ tileWidth do
         ld [IX] 0x91 -- 0x96
         inc IX
     ld [IX] 0x6d
-    inc IX
 
     -- Left, contents, right
-    ld D 0
-    ld E (numCols - (tileWidth + 2))
+    ld DE $ numCols - (tileWidth + 1)
 
     replicateM_ (tileHeight `div` 2) do
         add IX DE
         ld [IX] 0x90 -- 0xeb
         inc IX
-        decLoopB tileWidth do
+        replicateM_ tileWidth do
             ld [IX] space
             inc IX
         ld [IX] 0x90 -- 0xea
-        inc IX
 
     add IX DE
     ld [IX] 0x90 -- 0xeb
     inc IX
-    decLoopB tileWidth do
+    replicateM_ tileWidth do
         ldVia A [IX] [IY]
         inc IX
         inc IY
     ld [IX] 0x90 -- 0xea
-    inc IX
 
     replicateM_ (tileHeight - ((tileHeight `div` 2) + 1)) do
         add IX DE
         ld [IX] 0x90 -- 0xeb
         inc IX
-        decLoopB tileWidth do
+        replicateM_ tileWidth do
             ld [IX] space
             inc IX
         ld [IX] 0x90 -- 0xea
-        inc IX
 
     -- Bottom
     add IX DE
     ld [IX] 0x6c
     inc IX
-    decLoopB tileWidth do
+    replicateM_ tileWidth do
         ld [IX] 0x91 -- 0x95
         inc IX
     ld [IX] 0x6b
@@ -165,8 +160,7 @@ drawTile = do
 -- | Pre: `IX` is top left corner
 clearTile :: Z80ASM
 clearTile = do
-    ld D 0
-    ld E $ numCols - 7
+    ld DE $ numCols - 7
     decLoopB 5 do
         exx
         decLoopB 7 do
@@ -180,12 +174,13 @@ drawScreen :: Locations -> Z80ASM
 drawScreen locs@MkLocs{..} = do
     blitGrid locs
     drawTiles locs
-    pure ()
 
 drawTiles :: Locations -> Z80ASM
 drawTiles locs@MkLocs{..} = mdo
-    forM_ [0..3] \i -> forM_ [0..3] \j -> skippable \next -> do
-        ld BC (j * 4 + i)
+    forM_ [0..3] \i -> forM_ [0..3] \j -> do
+        let idx = j * 4 + i
+        ld HL $ tileValues + idx
+        ld BC $ tileOffs + idx
         ld IX $ videoStart + yoff + (xoff + ((tileWidth + 3) * i)) + (1 + (tileHeight + 3) * j) * numCols
         call drawMovedTile
     ret
@@ -194,25 +189,24 @@ drawTiles locs@MkLocs{..} = mdo
       [ map (fromIntegral . ord) $ replicate (4 - length s) ' ' <> s | i <- [0..13], let s = show (2 ^ i) ]
 
     -- `IX` contains top left corner
-    -- `BC` contains tile index in data structures
+    -- `HL` is the pointer to the tile value
+    -- `BC` is the pointer to the tile offset
     drawMovedTile <- labelled do
-        ld HL tileValues
-        add HL BC
+        -- Load tile value
         ld A [HL]
         sub 1
         ret C
 
+        -- Tile value label
         ld IY numbers
-        sla A
-        sla A
+        rla
+        rla
         ld D 0
         ld E A
         add IY DE
 
-        ld HL tileOffs
-        add HL BC
-        ld A [HL]
-
+        -- Tile offset
+        ld A [BC]
         call calcMoveF
         add IX DE
 
@@ -232,7 +226,7 @@ calcMoveW = do
     neg
     ld E A
     ret Z
-    ld D 0xff
+    dec D
     ret
 
 calcMoveS = mdo
