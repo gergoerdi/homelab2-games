@@ -3,7 +3,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 module HL2048.Draw
     ( clearScreen, drawScreen, drawTile, prepareGrid
-    , calcMoveN, calcMoveS, calcMoveE, calcMoveW
+    , calcAnimN, calcAnimS, calcAnimE, calcAnimW
     ) where
 
 import HL2048
@@ -213,7 +213,7 @@ drawTiles locs@MkLocs{..} = mdo
         -- Tile offset
         ld A [BC]
         srl A
-        call calcMoveF
+        call calcAnimF
         add IX DE
 
         jp drawTileF -- drawTileF will return for us!
@@ -223,19 +223,19 @@ drawTiles locs@MkLocs{..} = mdo
 -- | Pre: `D` is 0
 -- | Pre: `A` is the amount to offset
 -- | Post: `DE` is the tile delta
-calcMoveN, calcMoveS, calcMoveE, calcMoveW :: Z80ASM
-calcMoveE = do
+calcAnimN, calcAnimS, calcAnimE, calcAnimW :: Z80ASM
+calcAnimE = do
     ld E A
     ret
 
-calcMoveW = do
+calcAnimW = do
     neg
     ld E A
     ret Z
     dec D
     ret
 
-calcMoveS = mdo
+calcAnimS = mdo
     ld E A
     push IY
     ld IY times40
@@ -250,7 +250,7 @@ calcMoveS = mdo
     times40 <- labelled $ dw [ i * numCols | i <- [0.. 4 * (tileHeight + 3)] ]
     pure ()
 
-calcMoveN = mdo
+calcAnimN = mdo
     ld E A
     push IY
     ld IY timesNeg40

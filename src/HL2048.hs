@@ -20,7 +20,7 @@ tileWidth = 4
 
 data Locations = MkLocs
   { drawTileF :: Location
-  , calcMoveF :: Location
+  , calcAnimF :: Location
   , screenBuf :: Location
   , tileValues, tileValues', tileSpeeds, tileOffs :: Location
   }

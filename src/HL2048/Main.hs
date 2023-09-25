@@ -26,79 +26,80 @@ game = mdo
     decLoopB 16 do
         ld [HL] 0
         inc HL
+
+    call drawScreenF
     withLabel \loop -> mdo
         halt
-        call drawScreenF
-
 
         dispatchInput north south east west
         jp loop
 
-        north <- labelled do
-            -- Demo stuff
-            ld DE tileSpeeds
-            ld HL tileSpeedsN
-            ld BC 16
-            ldir
+        let rotMoveRot k = do
+                let ldBoard to from = do
+                        ld DE to
+                        ld HL from
+                        ld BC 16
+                        ldir
 
-            ldVia DE [calcMoveSlot] calcMoveNF
+                -- Save game board
+                ldBoard tileScratch tileValues
+
+                -- Rotate game board
+                replicateM_ k do
+                    ld IX tileValues
+                    ld IY tileValues'
+                    call rotateF
+                    call applyStateF
+
+                -- Calculate movement
+                call calcMoveWF
+
+                -- Restore game board
+                ldBoard tileValues tileScratch
+
+                -- Rotate end state
+                replicateM_ (4 - k) do
+                    ld IX tileValues'
+                    ld IY tileScratch
+                    call rotateF
+                    ldBoard tileValues' tileScratch
+
+                -- Rotate movements
+                replicateM_ (4 - k) do
+                    ld IX tileSpeeds
+                    ld IY tileScratch
+                    call rotateF
+                    ldBoard tileSpeeds tileScratch
+
+        north <- labelled do
+            rotMoveRot 3
+            ldVia DE [calcAnimSlot] calcAnimNF
             ld B $ 2 * (tileHeight + 3)
             call animateMoveF
             jp loop
 
         south <- labelled do
-            -- Demo stuff
-            ld DE tileSpeeds
-            ld HL tileSpeedsS
-            ld BC 16
-            ldir
-
-            ldVia DE [calcMoveSlot] calcMoveSF
+            rotMoveRot 1
+            ldVia DE [calcAnimSlot] calcAnimSF
             ld B $ 2 * (tileHeight + 3)
             call animateMoveF
             jp loop
 
         east <- labelled do
-            -- Demo stuff
-            ld DE tileSpeeds
-            ld HL tileSpeedsE
-            ld BC 16
-            ldir
-
-            ldVia DE [calcMoveSlot] calcMoveEF
+            rotMoveRot 2
+            ldVia DE [calcAnimSlot] calcAnimEF
             ld B $ 2 * (tileWidth + 3)
             call animateMoveF
             jp loop
 
         west <- labelled do
-            -- Demo stuff
-            ld DE tileSpeeds
-            ld HL tileSpeedsW
-            ld BC 16
-            ldir
-
-            ldVia DE [calcMoveSlot] calcMoveWF
+            call calcMoveWF
+            ldVia DE [calcAnimSlot] calcAnimWF
             ld B $ 2 * (tileWidth + 3)
             call animateMoveF
             jp loop
 
         pure ()
-
-
-        -- ld B $ tileHeight + 3
-        -- withLabel \loop -> do
-        --     push BC
-        --     call drawScreenF
-        --     call moveTilesF
-        --     halt
-        --     pop BC
-        --     dec B
-        --     jp NZ loop
-
-        -- loopForever do
-        --     call drawScreenF
-        --     halt
-
     loopForever $ pure ()
 
     drawTileF <- labelled drawTile
@@ -107,14 +108,16 @@ game = mdo
         drawScreen locs
         ret
 
-    calcMoveNF <- labelled calcMoveN
-    calcMoveSF <- labelled calcMoveS
-    calcMoveEF <- labelled calcMoveE
-    calcMoveWF <- labelled calcMoveW
+    calcMoveWF <- labelled $ calcMoveW locs
 
-    calcMoveF <- labelled do
-        jp calcMoveEF
-    let calcMoveSlot = calcMoveF + 1
+    calcAnimNF <- labelled calcAnimN
+    calcAnimSF <- labelled calcAnimS
+    calcAnimEF <- labelled calcAnimE
+    calcAnimWF <- labelled calcAnimW
+
+    calcAnimF <- labelled do
+        jp calcAnimEF
+    let calcAnimSlot = calcAnimF + 1
 
     -- | Pre: `B` is number of frames to run
     animateMoveF <- labelled do
@@ -143,30 +146,32 @@ game = mdo
 
 
     rotateF <- labelled do
-        -- Maps the board state in tileValues
+        -- Maps the board state in IX
         --
         --   0123
         --   4567
         --   89ab
         --   cdef
         --
-        -- to the rotated state in tileValues'
+        -- to the rotated state in IY
         --
         --   c840
         --   d951
         --   ea62
         --   fb73
         --
-        ld IX $ tileValues + 15
 
-        ld D 0 -- DE: offset in target matrix, starts at 12 (see position of `f` above)
-        ld E 12
+        ld DE 15
+        add IX DE -- Counting down
+
+        ld DE 12 -- DE: offset in target matrix, starts at 12 (see position of `f` above)
         ld C 4 -- Stride for target matrix
 
         decLoopB 16 $ skippable \next -> do
-            ld IY tileValues'
-            add IY DE
-            ldVia A [IY] [IX]
+            push IY
+            pop HL
+            add HL DE
+            ldVia A [HL] [IX]
 
             dec IX
 
@@ -187,49 +192,17 @@ game = mdo
       -- , 1, 0, 0, 1
       -- , 1, 2, 0, 0
       -- ]
-      [ 1..16 ]
-
-    tileValues' <- labelled $ db
-      [ 0, 0, 0, 12
-      , 0, 0, 0, 2
-      , 0, 0, 0, 2
-      , 0, 0, 1, 2
+      -- [ 1..16 ]
+      [ 0, 0, 1, 1
+      , 1, 0, 1, 0
+      , 1, 1, 1, 1
+      , 1, 2, 2, 2
       ]
 
-    -- Test: right move
-    tileSpeedsE <- labelled $ db
-      [ 3, 0, 0, 0
-      , 3, 0, 1, 0
-      , 3, 0, 0, 0
-      , 2, 2, 0, 0
-      ]
-
-    -- Test: left move
-    tileSpeedsW <- labelled $ db
-      [ 0, 0, 0, 0
-      , 0, 0, 2, 0
-      , 0, 0, 0, 3
-      , 0, 1, 0, 0
-      ]
-
-    -- Test: down move
-    tileSpeedsS <- labelled $ db
-      [ 1, 0, 0, 0
-      , 1, 0, 2, 0
-      , 1, 0, 0, 1
-      , 0, 0, 0, 0
-      ]
-
-    -- Test: up move
-    tileSpeedsN <- labelled $ db
-      [ 0, 0, 0, 0
-      , 0, 0, 1, 0
-      , 1, 0, 0, 2
-      , 1, 3, 0, 0
-      ]
-
+    tileValues' <- labelled $ resb 16
     tileSpeeds <- labelled $ resb 16
     tileOffs <- labelled $ resb 16
+    tileScratch <- labelled $ resb 16
     screenBuf <- labelled $ resb $ 40 * 25
     pure ()
 
@@ -242,3 +215,69 @@ moveTiles locs@MkLocs{..} = mdo
         add A [HL]
         ld [HL] A
     ret
+
+calcMoveW :: Locations -> Z80ASM
+calcMoveW MkLocs{..} = mdo
+    ld IY tileValues'
+    ld IX tileSpeeds
+
+    decLoopB 16 do
+        ld [IY] 0
+        ld [IX] 0
+        inc IY
+        inc IX
+
+    ld IX tileSpeeds
+    ld HL tileValues
+    ld DE 0
+
+    forM_ [0..3] \i -> do
+        ld E (4 * i)
+        ld C 0
+
+        ldVia A [offset] 0
+        decLoopB 4 mdo
+            ld A [HL]
+            cp 0
+            jp Z emptyTile
+
+            skippable \end -> mdo
+                cp C
+                jp Z merge
+                ld C A
+                jp end
+
+                merge <- label
+                inc A
+                ld C 0
+                dec E
+
+                -- inc [offset]
+                push AF
+                ld A [offset]
+                inc A
+                ld [offset] A
+                pop AF
+
+            ld IY tileValues'
+            add IY DE
+            ld [IY] A
+
+            ldVia A [IX] [offset]
+
+            inc E
+            jp next
+
+            emptyTile <- labelled do
+                -- inc [offset]
+                ld A [offset]
+                inc A
+                ld [offset] A
+
+            next <- label
+            inc HL
+            inc IX
+    ret
+
+    offset <- labelled $ db [0]
+    pure ()
