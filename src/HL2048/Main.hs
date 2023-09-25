@@ -38,7 +38,7 @@ game = mdo
         ld [rng] DE
         jp loop
 
-        let rotMoveRot k = do
+        let rotMoveRot k ifMoved = skippable \invalidMove -> do
                 let ldBoard to from = do
                         ld DE to
                         ld HL from
@@ -61,6 +61,20 @@ game = mdo
                 -- Restore game board
                 ldBoard tileValues tileScratch
 
+                -- This is not a valid move if every tile remains at its place
+                ld IX tileSpeeds
+                ld C 0
+                decLoopB 16 do
+                    ld A [IX]
+                    inc IX
+                    skippable \hasNotMoved -> do
+                        cp 0
+                        jp Z hasNotMoved
+                        inc C
+                ld A C
+                cp 0
+                jp Z invalidMove
+
                 -- Rotate end state
                 replicateM_ (4 - k) do
                     ld IX tileValues'
@@ -75,33 +89,39 @@ game = mdo
                     call rotateF
                     ldBoard tileSpeeds tileScratch
 
+                ifMoved
+
         north <- labelled do
-            rotMoveRot 3
-            ldVia DE [calcAnimSlot] calcAnimNF
-            ld B $ 2 * (tileHeight + 3)
-            call animateMoveF
-            jp moved
+            rotMoveRot 3 do
+                ldVia DE [calcAnimSlot] calcAnimNF
+                ld B $ 2 * (tileHeight + 3)
+                call animateMoveF
+                jp moved
+            jp loop
 
         south <- labelled do
-            rotMoveRot 1
-            ldVia DE [calcAnimSlot] calcAnimSF
-            ld B $ 2 * (tileHeight + 3)
-            call animateMoveF
-            jp moved
+            rotMoveRot 1 do
+                ldVia DE [calcAnimSlot] calcAnimSF
+                ld B $ 2 * (tileHeight + 3)
+                call animateMoveF
+                jp moved
+            jp loop
 
         east <- labelled do
-            rotMoveRot 2
-            ldVia DE [calcAnimSlot] calcAnimEF
-            ld B $ 2 * (tileWidth + 3)
-            call animateMoveF
-            jp moved
+            rotMoveRot 2 do
+                ldVia DE [calcAnimSlot] calcAnimEF
+                ld B $ 2 * (tileWidth + 3)
+                call animateMoveF
+                jp moved
+            jp loop
 
         west <- labelled do
-            call calcMoveWF
-            ldVia DE [calcAnimSlot] calcAnimWF
-            ld B $ 2 * (tileWidth + 3)
-            call animateMoveF
-            jp moved
+            rotMoveRot 0 do
+                ldVia DE [calcAnimSlot] calcAnimWF
+                ld B $ 2 * (tileWidth + 3)
+                call animateMoveF
+                jp moved
+            jp loop
 
         moved <- labelled do
             call newTileF
