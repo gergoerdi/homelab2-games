@@ -27,6 +27,7 @@ game = mdo
         ld [HL] 0
         inc HL
 
+    call newTileF
     call drawScreenF
     withLabel \loop -> mdo
         halt
@@ -103,33 +104,7 @@ game = mdo
             jp moved
 
         moved <- labelled do
-            ld DE [rng]
-            call lfsr10F
-            ld [rng] DE
-
-            -- With 1/4 chance, new tile value should be 2
-            ld B 1
-            skippable \new1 -> do
-                srl E
-                jp C new1
-                srl E
-                jp C new1
-                inc B
-
-            -- We want DE to be a valid tile index, i.e. in 0..15
-            ld D 0
-            ld A E
-            Z80.and 0xf
-            ld E A
-
-            -- Is this space occupied already?
-            ld IX tileValues
-            add IX DE
-            ld A [IX]
-            cp 0
-            jp NZ moved
-
-            ld [IX] B
+            call newTileF
             call drawScreenF
 
         jp loop
@@ -178,6 +153,35 @@ game = mdo
         ldir
         ret
 
+    newTileF <- labelled do
+        ld DE [rng]
+        call lfsr10F
+        ld [rng] DE
+
+        -- With 1/4 chance, new tile value should be 2
+        ld B 1
+        skippable \new1 -> do
+            srl E
+            jp C new1
+            srl E
+            jp C new1
+            inc B
+
+        -- We want DE to be a valid tile index, i.e. in 0..15
+        ld D 0
+        ld A E
+        Z80.and 0xf
+        ld E A
+
+        -- Is this space occupied already?
+        ld IX tileValues
+        add IX DE
+        ld A [IX]
+        cp 0
+        jp NZ newTileF
+
+        ld [IX] B
+        ret
 
     rotateF <- labelled do
         -- Maps the board state in IX
@@ -220,21 +224,9 @@ game = mdo
 
         ret
 
-    tileValues <- labelled $ db
-      -- [ 12, 0, 0, 0
-      -- , 1, 0, 1, 0
-      -- , 1, 0, 0, 1
-      -- , 1, 2, 0, 0
-      -- ]
-      -- [ 1..16 ]
-      [ 0, 0, 1, 1
-      , 1, 0, 1, 0
-      , 1, 1, 1, 1
-      , 1, 2, 2, 2
-      ]
-
     rng <- labelled $ dw [1]
 
+    tileValues <- labelled $ db $ replicate 16 0
     tileValues' <- labelled $ resb 16
     tileSpeeds <- labelled $ resb 16
     tileOffs <- labelled $ resb 16
