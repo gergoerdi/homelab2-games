@@ -13,7 +13,7 @@ space :: Word8
 space = 0x20
 
 tileHeight :: Num a => a
-tileHeight = 2
+tileHeight = 1
 
 tileWidth :: Num a => a
 tileWidth = 4
