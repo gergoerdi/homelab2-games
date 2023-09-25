@@ -2,7 +2,7 @@
 {-# LANGUAGE RecursiveDo #-}
 {-# LANGUAGE FlexibleContexts #-}
 module HL2048.Draw
-    ( clearScreen, drawScreen, drawTile, prepareGrid
+    ( clearScreen, drawTexts, drawScreen, drawTile, prepareGrid
     , calcAnimN, calcAnimS, calcAnimE, calcAnimW
     ) where
 
@@ -20,29 +20,52 @@ import Data.Bits
 import Data.Char
 
 clearScreen :: Locations -> Z80ASM
-clearScreen MkLocs{..} = mdo
+clearScreen MkLocs{..} = do
     ld HL videoStart
     ld IX screenBuf
     ld IY doubleBuf
-    loop <- label
-    ld A space
-    ld [HL] A
-    inc HL
-    ld [IX] A
-    inc IX
-    ld [IY] A
-    inc IY
-    ld A H
-    cp 0xc4
-    jp NZ loop
+    withLabel \loop -> do
+        ld A space
+        ld [HL] A
+        inc HL
+        ld [IX] A
+        inc IX
+        ld [IY] A
+        inc IY
+        ld A H
+        cp 0xc4
+        jp NZ loop
 
+drawTexts :: Locations -> Z80ASM
+drawTexts MkLocs{..} = do
     printCenteredLine videoStart 2 "HOMELAB-2048"
 
+    let lineNum = 10
+
+    forM_ (zip [0..] lines) \(i, line) -> mdo
+        ld IX $ videoStart + numCols * (lineNum + i) + xoff + (tileWidth + 3) * 4 + 1
+        ld IY text
+        text <- stringLoopB line do
+            ldVia A [IX] [IY]
+            inc IX
+            inc IY
+        pure ()
+  where
+    lines =
+      [ "   I"
+      , " "
+      , "   \x04"
+      , "J \x01\x73\x00 L"
+      , "   \x05"
+      , " "
+      , "   K"
+      ]
+
 xoff :: Integral a => a
-xoff = (numCols - 4 * (tileWidth + 3)) `div` 2
+xoff = 2
 
 yoff :: Integral a => a
-yoff = numCols * (((numRows - 4 * (tileHeight + 3)) `div` 2) + 2)
+yoff = numCols * ((((numRows - 4 * (tileHeight + 3)) `div` 2) + 2) - 1)
 
 drawGrid :: Z80ASM
 drawGrid = do

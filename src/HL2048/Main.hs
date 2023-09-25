@@ -21,6 +21,7 @@ game = mdo
 
     clearScreen locs
     prepareGrid locs
+    drawTexts locs
 
     ld HL tileOffs
     decLoopB 16 do
