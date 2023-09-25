@@ -42,7 +42,7 @@ game = mdo
             ldir
 
             ldVia DE [calcMoveSlot] calcMoveNF
-            ld B $ tileHeight + 3
+            ld B $ 2 * (tileHeight + 3)
             call animateMoveF
             jp loop
 
@@ -54,7 +54,7 @@ game = mdo
             ldir
 
             ldVia DE [calcMoveSlot] calcMoveSF
-            ld B $ tileHeight + 3
+            ld B $ 2 * (tileHeight + 3)
             call animateMoveF
             jp loop
 
@@ -66,7 +66,7 @@ game = mdo
             ldir
 
             ldVia DE [calcMoveSlot] calcMoveEF
-            ld B $ tileWidth + 3
+            ld B $ 2 * (tileWidth + 3)
             call animateMoveF
             jp loop
 
@@ -78,7 +78,7 @@ game = mdo
             ldir
 
             ldVia DE [calcMoveSlot] calcMoveWF
-            ld B $ tileWidth + 3
+            ld B $ 2 * (tileWidth + 3)
             call animateMoveF
             jp loop
 
@@ -127,6 +127,11 @@ game = mdo
             djnz runAnim
 
         call applyStateF
+        ld HL tileOffs
+        decLoopB 16 do
+            ld [HL] 0
+            inc HL
+        call drawScreenF
         ret
 
     applyStateF <- labelled do

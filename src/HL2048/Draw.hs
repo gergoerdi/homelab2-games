@@ -177,12 +177,17 @@ drawScreen locs@MkLocs{..} = do
 
 drawTiles :: Locations -> Z80ASM
 drawTiles locs@MkLocs{..} = mdo
-    forM_ [0..3] \i -> forM_ [0..3] \j -> do
+    ld HL tileValues
+    ld BC tileOffs
+
+    forM_ [0..3] \j -> forM_ [0..3] \i -> do
         let idx = j * 4 + i
-        ld HL $ tileValues + idx
-        ld BC $ tileOffs + idx
         ld IX $ videoStart + yoff + (xoff + ((tileWidth + 3) * i)) + (1 + (tileHeight + 3) * j) * numCols
         call drawMovedTile
+
+        unless ((i, j) == (3, 3)) do
+            inc HL
+            inc BC
     ret
 
     numbers <- labelled $ db $ mconcat
@@ -207,6 +212,7 @@ drawTiles locs@MkLocs{..} = mdo
 
         -- Tile offset
         ld A [BC]
+        srl A
         call calcMoveF
         add IX DE
 
@@ -231,12 +237,14 @@ calcMoveW = do
 
 calcMoveS = mdo
     ld E A
-    ld HL times40
-    add HL DE
-    add HL DE
-    ld E [HL]
-    inc HL
-    ld D [HL]
+    push IY
+    ld IY times40
+    add IY DE
+    add IY DE
+    ld E [IY]
+    inc IY
+    ld D [IY]
+    pop IY
     ret
 
     times40 <- labelled $ dw [ i * numCols | i <- [0.. 4 * (tileHeight + 3)] ]
@@ -244,12 +252,14 @@ calcMoveS = mdo
 
 calcMoveN = mdo
     ld E A
-    ld HL timesNeg40
-    add HL DE
-    add HL DE
-    ld E [HL]
-    inc HL
-    ld D [HL]
+    push IY
+    ld IY timesNeg40
+    add IY DE
+    add IY DE
+    ld E [IY]
+    inc IY
+    ld D [IY]
+    pop IY
     ret
 
     timesNeg40 <- labelled $ dw [ negate i * numCols | i <- [0.. 4 * (tileHeight + 3)] ]
