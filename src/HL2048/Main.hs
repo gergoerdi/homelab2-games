@@ -94,7 +94,7 @@ game = mdo
         north <- labelled do
             rotMoveRot 3 do
                 ldVia DE [calcAnimSlot] calcAnimNF
-                ld B $ 2 * (tileHeight + 3)
+                ld B $ 1 * (tileHeight + 3)
                 call animateMoveF
                 jp moved
             jp loop
@@ -102,7 +102,7 @@ game = mdo
         south <- labelled do
             rotMoveRot 1 do
                 ldVia DE [calcAnimSlot] calcAnimSF
-                ld B $ 2 * (tileHeight + 3)
+                ld B $ 1 * (tileHeight + 3)
                 call animateMoveF
                 jp moved
             jp loop
@@ -110,7 +110,7 @@ game = mdo
         east <- labelled do
             rotMoveRot 2 do
                 ldVia DE [calcAnimSlot] calcAnimEF
-                ld B $ 2 * (tileWidth + 3)
+                ld B $ 1 * (tileWidth + 3)
                 call animateMoveF
                 jp moved
             jp loop
@@ -118,7 +118,7 @@ game = mdo
         west <- labelled do
             rotMoveRot 0 do
                 ldVia DE [calcAnimSlot] calcAnimWF
-                ld B $ 2 * (tileWidth + 3)
+                ld B $ 1 * (tileWidth + 3)
                 call animateMoveF
                 jp moved
             jp loop

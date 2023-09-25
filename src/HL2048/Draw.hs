@@ -228,7 +228,6 @@ drawTiles locs@MkLocs{..} = skippable \end -> mdo
 
         -- Tile offset
         ld A [BC]
-        srl A
         call calcAnimF
         add IX DE
 
