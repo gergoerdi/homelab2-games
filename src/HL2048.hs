@@ -23,4 +23,5 @@ data Locations = MkLocs
   , calcAnimF :: Location
   , screenBuf :: Location
   , tileValues, tileValues', tileSpeeds, tileOffs :: Location
+  , rng :: Location
   }

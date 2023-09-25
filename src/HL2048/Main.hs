@@ -32,6 +32,9 @@ game = mdo
         halt
 
         dispatchInput north south east west
+        ld DE [rng]
+        call lfsr10F
+        ld [rng] DE
         jp loop
 
         let rotMoveRot k = do
@@ -76,30 +79,60 @@ game = mdo
             ldVia DE [calcAnimSlot] calcAnimNF
             ld B $ 2 * (tileHeight + 3)
             call animateMoveF
-            jp loop
+            jp moved
 
         south <- labelled do
             rotMoveRot 1
             ldVia DE [calcAnimSlot] calcAnimSF
             ld B $ 2 * (tileHeight + 3)
             call animateMoveF
-            jp loop
+            jp moved
 
         east <- labelled do
             rotMoveRot 2
             ldVia DE [calcAnimSlot] calcAnimEF
             ld B $ 2 * (tileWidth + 3)
             call animateMoveF
-            jp loop
+            jp moved
 
         west <- labelled do
             call calcMoveWF
             ldVia DE [calcAnimSlot] calcAnimWF
             ld B $ 2 * (tileWidth + 3)
             call animateMoveF
-            jp loop
+            jp moved
 
-        pure ()
+        moved <- labelled do
+            ld DE [rng]
+            call lfsr10F
+            ld [rng] DE
+
+            -- With 1/4 chance, new tile value should be 2
+            ld B 1
+            skippable \new1 -> do
+                srl E
+                jp C new1
+                srl E
+                jp C new1
+                inc B
+
+            -- We want DE to be a valid tile index, i.e. in 0..15
+            ld D 0
+            ld A E
+            Z80.and 0xf
+            ld E A
+
+            -- Is this space occupied already?
+            ld IX tileValues
+            add IX DE
+            ld A [IX]
+            cp 0
+            jp NZ moved
+
+            ld [IX] B
+            call drawScreenF
+
+        jp loop
     loopForever $ pure ()
 
     drawTileF <- labelled drawTile
@@ -107,6 +140,8 @@ game = mdo
     drawScreenF <- labelled $ do
         drawScreen locs
         ret
+
+    lfsr10F <- labelled lfsr10
 
     calcMoveWF <- labelled $ calcMoveW locs
 
@@ -134,7 +169,6 @@ game = mdo
         decLoopB 16 do
             ld [HL] 0
             inc HL
-        call drawScreenF
         ret
 
     applyStateF <- labelled do
@@ -198,6 +232,8 @@ game = mdo
       , 1, 1, 1, 1
       , 1, 2, 2, 2
       ]
+
+    rng <- labelled $ dw [1]
 
     tileValues' <- labelled $ resb 16
     tileSpeeds <- labelled $ resb 16
@@ -281,3 +317,22 @@ calcMoveW MkLocs{..} = mdo
 
     offset <- labelled $ db [0]
     pure ()
+
+-- | An 10-bit maximal LFSR
+-- | Pre: `DE` is the current state
+-- | Post: `DE` is the new state
+-- | Clobbers: `A`
+lfsr10 :: Z80ASM
+lfsr10 = do
+    srl D
+    ld A E
+    rra
+    ld E A
+    skippable \skip -> do
+        jp NC skip
+        Z80.xor 0x04
+        ld E A
+        ld A 0x02
+        Z80.xor D
+        ld D A
+    ret

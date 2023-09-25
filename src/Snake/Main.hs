@@ -223,7 +223,7 @@ placeFruit MkLocs{..} = loopForever do
 -- | An 10-bit maximal LFSR
 -- | Pre: `DE` is the current state
 -- | Post: `DE` is the new state
--- | Clobbrs: `A`
+-- | Clobbers: `A`
 lfsr10 :: Z80ASM
 lfsr10 = do
     srl D
