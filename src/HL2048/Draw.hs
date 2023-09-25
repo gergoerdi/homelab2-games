@@ -23,11 +23,15 @@ clearScreen :: Locations -> Z80ASM
 clearScreen MkLocs{..} = mdo
     ld HL videoStart
     ld IX screenBuf
+    ld IY doubleBuf
     loop <- label
-    ld [HL] space
+    ld A space
+    ld [HL] A
     inc HL
-    ld [IX] space
+    ld [IX] A
     inc IX
+    ld [IY] A
+    inc IY
     ld A H
     cp 0xc4
     jp NZ loop
@@ -58,7 +62,7 @@ prepareGrid MkLocs{..} = do
 blitGrid :: Locations -> Z80ASM
 blitGrid MkLocs{..} = do
     let from = screenBuf + 1
-        to = videoStart + yoff + xoff
+        to = doubleBuf + 1
 
     forM_ [1 .. 4 * (tileHeight + 3) - 1] \i -> do
         ld HL $ from + i * numCols
@@ -66,6 +70,16 @@ blitGrid MkLocs{..} = do
         replicateM_ (4 * (tileWidth + 3) - 1) do
             ldi
 
+blitBuf :: Locations -> Z80ASM
+blitBuf MkLocs{..} = do
+    let from = doubleBuf + 1
+        to = videoStart + yoff + xoff
+
+    forM_ [1 .. 4 * (tileHeight + 3) - 1] \i -> do
+        ld HL $ from + i * numCols
+        ld DE $ to + i * numCols
+        replicateM_ (4 * (tileWidth + 3) - 1) do
+            ldi
 
 gridX, gridH, gridV :: Word8
 gridX = 0x79
@@ -174,21 +188,23 @@ drawScreen :: Locations -> Z80ASM
 drawScreen locs@MkLocs{..} = do
     blitGrid locs
     drawTiles locs
+    blitBuf locs
+    ret
 
 drawTiles :: Locations -> Z80ASM
-drawTiles locs@MkLocs{..} = mdo
+drawTiles locs@MkLocs{..} = skippable \end -> mdo
     ld HL tileValues
     ld BC tileOffs
 
     forM_ [0..3] \j -> forM_ [0..3] \i -> do
         let idx = j * 4 + i
-        ld IX $ videoStart + yoff + (xoff + ((tileWidth + 3) * i)) + (1 + (tileHeight + 3) * j) * numCols
+        ld IX $ doubleBuf + (1 + ((tileWidth + 3) * i)) + (1 + (tileHeight + 3) * j) * numCols
         call drawMovedTile
 
         unless ((i, j) == (3, 3)) do
             inc HL
             inc BC
-    ret
+    jp end
 
     numbers <- labelled $ db $ mconcat
       [ map (fromIntegral . ord) $ replicate (4 - length s) ' ' <> s | i <- [0..13], let s = show (2 ^ i) ]

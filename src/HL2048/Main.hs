@@ -252,6 +252,7 @@ game = mdo
     tileOffs <- labelled $ resb 16
     tileScratch <- labelled $ resb 16
     screenBuf <- labelled $ resb $ 40 * 25
+    doubleBuf <- labelled $ resb $ (4 * (tileWidth + 3)) * (4 * (tileHeight + 3))
     pure ()
 
 moveTiles :: Locations -> Z80ASM
