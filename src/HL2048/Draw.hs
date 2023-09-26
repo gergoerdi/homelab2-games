@@ -90,8 +90,8 @@ blitGrid MkLocs{..} = do
     forM_ [1 .. 4 * (tileHeight + 3) - 1] \i -> do
         ld HL $ from + i * numCols
         ld DE $ to + i * numCols
-        replicateM_ (4 * (tileWidth + 3) - 1) do
-            ldi
+        ld BC $ 4 * (tileWidth + 3) - 1
+        ldir
 
 blitBuf :: Locations -> Z80ASM
 blitBuf MkLocs{..} = do
@@ -101,8 +101,8 @@ blitBuf MkLocs{..} = do
     forM_ [1 .. 4 * (tileHeight + 3) - 1] \i -> do
         ld HL $ from + i * numCols
         ld DE $ to + i * numCols
-        replicateM_ (4 * (tileWidth + 3) - 1) do
-            ldi
+        ld BC $ 4 * (tileWidth + 3) - 1
+        ldir
 
 gridX, gridH, gridV :: Word8
 gridX = 0x79
