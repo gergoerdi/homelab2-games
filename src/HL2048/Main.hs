@@ -19,117 +19,138 @@ game :: Z80ASM
 game = mdo
     let locs = MkLocs{..}
 
-    clearScreen locs
-    prepareGrid locs
-    drawTexts locs
+    withLabel \newGame -> do
+        ld HL tileOffs
+        ld IX tileValues
+        ld IY tileValues'
+        ld A 0
+        decLoopB 16 do
+            ld [HL] A
+            ld [IX] A
+            ld [IY] A
+            inc HL
+            inc IX
+            inc IY
+        call newTileF
+        ld DE undoValues
+        ld HL tileValues
+        ld BC 16
+        ldir
 
-    ld HL tileOffs
-    decLoopB 16 do
-        ld [HL] 0
-        inc HL
+        clearScreen locs
+        prepareGrid locs
+        drawTexts locs
 
-    call newTileF
-    call drawScreenF
-    withLabel \loop -> mdo
-        halt
+        undo <- labelled do
+            ld DE tileValues
+            ld HL undoValues
+            ld BC 16
+            ldir
 
-        dispatchInput north south east west
-        ld DE [rng]
-        call lfsr10F
-        ld [rng] DE
-        jp loop
+        call drawScreenF
+        loopForever $ withLabel \loop -> mdo
+            halt
 
-        let rotMoveRot k ifMoved = skippable \invalidMove -> do
-                let ldBoard to from = do
-                        ld DE to
-                        ld HL from
-                        ld BC 16
-                        ldir
+            ld A [0x3abf]
+            cp 0b1111_1011
+            jp Z newGame
+            cp 0b1101_1111
+            jp Z undo
 
-                -- Save game board
-                ldBoard tileScratch tileValues
+            dispatchInput north south east west
+            ld DE [rng]
+            call lfsr10F
+            ld [rng] DE
+            jp loop
 
-                -- Rotate game board
-                replicateM_ k do
-                    ld IX tileValues
-                    ld IY tileValues'
-                    call rotateF
-                    call applyStateF
+            let rotMoveRot k ifMoved = skippable \invalidMove -> do
+                    let ldBoard to from = do
+                            ld DE to
+                            ld HL from
+                            ld BC 16
+                            ldir
 
-                -- Calculate movement
-                call calcMoveWF
+                    -- Save game board
+                    ldBoard tileScratch tileValues
 
-                -- Restore game board
-                ldBoard tileValues tileScratch
+                    -- Rotate game board
+                    replicateM_ k do
+                        ld IX tileValues
+                        ld IY tileValues'
+                        call rotateF
+                        call applyStateF
 
-                -- This is not a valid move if every tile remains at its place
-                ld IX tileSpeeds
-                ld C 0
-                decLoopB 16 do
-                    ld A [IX]
-                    inc IX
-                    skippable \hasNotMoved -> do
-                        cp 0
-                        jp Z hasNotMoved
-                        inc C
-                ld A C
-                cp 0
-                jp Z invalidMove
+                    -- Calculate movement
+                    call calcMoveWF
 
-                -- Rotate end state
-                replicateM_ (4 - k) do
-                    ld IX tileValues'
-                    ld IY tileScratch
-                    call rotateF
-                    ldBoard tileValues' tileScratch
+                    -- Restore game board
+                    ldBoard tileValues tileScratch
 
-                -- Rotate movements
-                replicateM_ (4 - k) do
+                    -- This is not a valid move if every tile remains at its place
                     ld IX tileSpeeds
-                    ld IY tileScratch
-                    call rotateF
-                    ldBoard tileSpeeds tileScratch
+                    ld C 0
+                    decLoopB 16 do
+                        ld A [IX]
+                        inc IX
+                        skippable \hasNotMoved -> do
+                            cp 0
+                            jp Z hasNotMoved
+                            inc C
+                    ld A C
+                    cp 0
+                    jp Z invalidMove
 
-                ifMoved
+                    -- Rotate end state
+                    replicateM_ (4 - k) do
+                        ld IX tileValues'
+                        ld IY tileScratch
+                        call rotateF
+                        ldBoard tileValues' tileScratch
 
-        north <- labelled do
-            rotMoveRot 3 do
-                ldVia DE [calcAnimSlot] calcAnimNF
-                ld B $ 1 * (tileHeight + 3)
-                call animateMoveF
-                jp moved
-            jp loop
+                    -- Rotate movements
+                    replicateM_ (4 - k) do
+                        ld IX tileSpeeds
+                        ld IY tileScratch
+                        call rotateF
+                        ldBoard tileSpeeds tileScratch
 
-        south <- labelled do
-            rotMoveRot 1 do
-                ldVia DE [calcAnimSlot] calcAnimSF
-                ld B $ 1 * (tileHeight + 3)
-                call animateMoveF
-                jp moved
-            jp loop
+                    ifMoved
 
-        east <- labelled do
-            rotMoveRot 2 do
-                ldVia DE [calcAnimSlot] calcAnimEF
-                ld B $ 1 * (tileWidth + 3)
-                call animateMoveF
-                jp moved
-            jp loop
+            north <- labelled do
+                rotMoveRot 3 do
+                    ldVia DE [calcAnimSlot] calcAnimNF
+                    ld B $ 1 * (tileHeight + 3)
+                    call animateMoveF
+                    jp moved
+                jp loop
 
-        west <- labelled do
-            rotMoveRot 0 do
-                ldVia DE [calcAnimSlot] calcAnimWF
-                ld B $ 1 * (tileWidth + 3)
-                call animateMoveF
-                jp moved
-            jp loop
+            south <- labelled do
+                rotMoveRot 1 do
+                    ldVia DE [calcAnimSlot] calcAnimSF
+                    ld B $ 1 * (tileHeight + 3)
+                    call animateMoveF
+                    jp moved
+                jp loop
 
-        moved <- labelled do
+            east <- labelled do
+                rotMoveRot 2 do
+                    ldVia DE [calcAnimSlot] calcAnimEF
+                    ld B $ 1 * (tileWidth + 3)
+                    call animateMoveF
+                    jp moved
+                jp loop
+
+            west <- labelled do
+                rotMoveRot 0 do
+                    ldVia DE [calcAnimSlot] calcAnimWF
+                    ld B $ 1 * (tileWidth + 3)
+                    call animateMoveF
+                    jp moved
+                jp loop
+
+            moved <- label
             call newTileF
             call drawScreenF
-
-        jp loop
-    loopForever $ pure ()
 
     drawTileF <- labelled drawTile
     moveTilesF <- labelled $ moveTiles locs
@@ -168,6 +189,10 @@ game = mdo
         ret
 
     applyStateF <- labelled do
+        ld DE undoValues
+        ld HL tileValues
+        ld BC 16
+        ldir
         ld DE tileValues
         ld HL tileValues'
         ld BC 16
@@ -247,7 +272,8 @@ game = mdo
 
     rng <- labelled $ dw [1]
 
-    tileValues <- labelled $ db $ replicate 16 0
+    tileValues <- labelled $ resb 16
+    undoValues <- labelled $ resb 16
     tileValues' <- labelled $ resb 16
     tileSpeeds <- labelled $ resb 16
     tileOffs <- labelled $ resb 16

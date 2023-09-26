@@ -40,7 +40,7 @@ drawTexts :: Locations -> Z80ASM
 drawTexts MkLocs{..} = do
     printCenteredLine videoStart 2 "HOMELAB-2048"
 
-    let lineNum = 10
+    let lineNum = 8
 
     forM_ (zip [0..] lines) \(i, line) -> mdo
         ld IX $ videoStart + numCols * (lineNum + i) + xoff + (tileWidth + 3) * 4 + 1
@@ -59,6 +59,11 @@ drawTexts MkLocs{..} = do
       , "   \x05"
       , " "
       , "   K"
+      , " "
+      , " "
+      , " "
+      , "\xd2\&ESTART"
+      , "\xd5\&UNDO"
       ]
 
 xoff :: Integral a => a
