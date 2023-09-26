@@ -40,7 +40,7 @@ drawTexts :: Locations -> Z80ASM
 drawTexts MkLocs{..} = do
     printCenteredLine videoStart 2 "HOMELAB-2048"
 
-    let lineNum = 8
+    let lineNum = 7
 
     forM_ (zip [0..] lines) \(i, line) -> mdo
         ld IX $ videoStart + numCols * (lineNum + i) + xoff + (tileWidth + 3) * 4 + 1
@@ -63,7 +63,8 @@ drawTexts MkLocs{..} = do
       , " "
       , " "
       , "\xd2\&ESTART"
-      , "\xd5\&UNDO"
+      , " "
+      , "\xd5\&NDO"
       ]
 
 xoff :: Integral a => a
@@ -234,8 +235,10 @@ drawTiles locs@MkLocs{..} = skippable \end -> mdo
             inc BC
     jp end
 
-    numbers <- labelled $ db $ mconcat
-      [ map (fromIntegral . ord) $ replicate (4 - length s) ' ' <> s | i <- [0..13], let s = show (2 ^ i) ]
+    numbers <- labelled $ db $ mconcat . mconcat $
+      [ [ map (fromIntegral . ord) $ replicate (4 - length s) ' ' <> s | i <- [1..13], let s = show (2 ^ i) ]
+      , [ map (fromIntegral . ord) $ replicate 4 c | c <- ['A'..'D'] ]
+      ]
 
     -- `IX` contains top left corner
     -- `HL` is the pointer to the tile value
