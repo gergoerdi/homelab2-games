@@ -154,7 +154,7 @@ drawScore MkLocs{..} = mdo
     call toBCDF
 
     -- Print value
-    ld IX $ videoStart + numCols * (numRows - 1) + xoff - 1 + 8
+    ld IX $ videoStart + numCols * (numRows - 1) + xoff - 1 + 7
 
     -- Most to least significant digits
     ld DE 9
