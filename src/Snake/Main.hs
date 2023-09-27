@@ -744,9 +744,6 @@ gameOver locs@MkLocs{..} = do
     ldVia A [segmentHi] hi
     call attractF
 
-invert :: String -> String
-invert = map (chr . (+ 0x80) . ord)
-
 keyE = 0b1110_1111
 keyS = 0b1111_0111
 keyW = 0b1111_1011

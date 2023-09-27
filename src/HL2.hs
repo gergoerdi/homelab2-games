@@ -4,6 +4,7 @@ module HL2 where
 import Z80
 import Z80.Utils
 import Data.Word
+import Data.Char
 
 videoStart :: Word16
 videoStart = 0xc001
@@ -23,3 +24,6 @@ printCenteredLine base row s = mdo
 
 printCenteredLines :: Location -> Location -> [String] -> Z80ASM
 printCenteredLines base row = mapM_ (uncurry $ printCenteredLine base) . zip [row..]
+
+invert :: String -> String
+invert = map (chr . (+ 0x80) . ord)

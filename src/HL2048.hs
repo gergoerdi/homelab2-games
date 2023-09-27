@@ -3,9 +3,6 @@ module HL2048 where
 import Z80
 import Data.Word
 
-videoBufStart :: Word16
-videoBufStart = 0x7001
-
 numRows :: (Num a) => a
 numRows = 25
 

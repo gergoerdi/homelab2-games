@@ -19,6 +19,10 @@ game :: Z80ASM
 game = mdo
     let locs = MkLocs{..}
 
+    clearScreen locs
+    prepareGrid locs
+    drawTexts locs
+
     withLabel \newGame -> do
         ld HL tileOffs
         ld IX tileValues
@@ -37,10 +41,6 @@ game = mdo
         ld BC 16
         ldir
 
-        clearScreen locs
-        prepareGrid locs
-        drawTexts locs
-
         undo <- labelled do
             ld DE tileValues
             ld HL undoValues
@@ -48,6 +48,7 @@ game = mdo
             ldir
 
         call drawScreenF
+        call drawScoreF
         loopForever $ withLabel \loop -> mdo
             halt
 
@@ -151,12 +152,14 @@ game = mdo
             moved <- label
             call newTileF
             call drawScreenF
+            call drawScoreF
 
     drawTileF <- labelled drawTile
     moveTilesF <- labelled $ moveTiles locs
-    drawScreenF <- labelled $ do
+    drawScreenF <- labelled do
         drawScreen locs
         ret
+    drawScoreF <- labelled $ drawScore locs
 
     lfsr10F <- labelled lfsr10
 
