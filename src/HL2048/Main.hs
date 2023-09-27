@@ -115,6 +115,10 @@ game = mdo
                         call rotateF
                         ldBoard tileSpeeds tileScratch
 
+                    ld DE undoValues
+                    ld HL tileValues
+                    ld BC 16
+                    ldir
                     ifMoved
 
             north <- labelled do
@@ -192,10 +196,6 @@ game = mdo
         ret
 
     applyStateF <- labelled do
-        ld DE undoValues
-        ld HL tileValues
-        ld BC 16
-        ldir
         ld DE tileValues
         ld HL tileValues'
         ld BC 16
