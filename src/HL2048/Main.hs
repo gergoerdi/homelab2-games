@@ -52,9 +52,25 @@ game = mdo
         loopForever $ withLabel \loop -> mdo
             halt
 
+            skippable \noRestart -> mdo
+                -- Is `R` pressed?
+                ld A [0x3abf]
+                cp 0b1111_1011
+                jp NZ notPressed
+
+                -- Was `R` released previously?
+                ld A [restartPressed]
+                cp 0
+                jp NZ noRestart
+                -- It is now.
+                ldVia A [restartPressed] 1
+                jp newGame
+
+                notPressed <- label
+                ldVia A [restartPressed] 0
+
+            -- Is `U` pressed?
             ld A [0x3abf]
-            cp 0b1111_1011
-            jp Z newGame
             cp 0b1101_1111
             jp Z undo
 
@@ -274,6 +290,7 @@ game = mdo
         ret
 
     rng <- labelled $ dw [1]
+    restartPressed <- labelled $ db [0]
 
     tileValues <- labelled $ resb 16
     undoValues <- labelled $ resb 16
