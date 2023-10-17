@@ -12,6 +12,7 @@ import HL2048.Input
 
 import Z80
 import Z80.Utils
+import Z80.BCD
 import HL2
 
 import Data.Word
@@ -36,75 +37,6 @@ clearScreen MkLocs{..} = do
         ld A H
         cp 0xc4
         jp NZ loop
-
--- | Pre: `HL` is pointer to a 24-bit unsigned int in little-endian
--- | Post: `HL` is pointer to 10-digit decimal number
--- Based on https://artemis.sh/2014/11/06/z80-assembly-binary-coded-decimal.html
-toBCD24 :: Z80ASM
-toBCD24 = mdo
-    -- Copy input to `src`
-    ld DE src
-    ld BC numBytes
-    ldir
-    ld IX src
-
-    -- Clear out `dst`
-    clearA
-    ld HL dst
-    decLoopB numDigits do
-        ld [HL] A
-        inc HL
-
-    decLoopB (numBytes * 8) do
-        ld HL dst
-        ld C numDigits
-        -- Iterate through each BCD digit. If digit > 4, add 3
-        withLabel \incLoop -> do
-            ld A [HL]
-            skippable \lessThan4 -> do
-                cp 5
-                jr C lessThan4
-                add A 3
-            ld [HL] A
-            inc HL
-
-            dec C
-            jr NZ incLoop
-
-        -- Shift SRC bits
-        sla [IX]
-        forM_ [1 .. numBytes - 1] \i -> do
-            rl [IX + fromIntegral i]
-
-        ld HL dst
-        ld C numDigits
-        withLabel \shiftLoop -> do
-            ld A [HL]
-            rla
-            skippable \not4 -> do
-                Z80.bit 4 A
-                jr Z not4
-                Z80.and 0x0f -- Mask out high bits, since we only want the lower 4 bits for the digit
-                scf          -- Set carry if bit 4 is set
-            ld [HL] A
-            inc HL
-
-            dec C
-            jr NZ shiftLoop
-
-    ld HL dst
-    ret
-
-    src <- labelled $ db $ replicate numBytes 0
-    dst <- labelled $ db $ replicate numDigits 0
-    pure ()
-  where
-    numBytes :: Num a => a
-    numBytes = 3
-
-    numDigits :: Num a => a
-    numDigits = 10
-
 
 drawScore :: Locations -> Z80ASM
 drawScore MkLocs{..} = mdo
@@ -151,7 +83,7 @@ drawScore MkLocs{..} = mdo
             inc HL
 
     ld HL sum
-    call toBCDF
+    call toBCD24
 
     -- Print value
     ld IX $ videoStart + numCols * (numRows - 1) + xoff - 1 + 7
@@ -186,7 +118,7 @@ drawScore MkLocs{..} = mdo
       , let b1 = fromIntegral (v `shiftR` 8)
       , let b2 = fromIntegral (v `shiftR` 16)
       ]
-    toBCDF <- labelled toBCD24
+    toBCD24 <- labelled $ toBCD 3 10
 
     pure ()
 
