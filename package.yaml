@@ -1,7 +1,7 @@
-name: homelab-snake
+name: homelab-games
 version: 0.1.0
 category: game
-license: MIT
+license: GPL-3
 
 extra-source-files:
   - README.md
@@ -17,5 +17,5 @@ source-dirs:
   - src
 
 executables:
-  homelab-snake:
+  homelab-games:
     main: main.hs

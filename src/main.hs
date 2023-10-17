@@ -5,6 +5,7 @@ module Main where
 import qualified Tetris.Main as Tetris
 import qualified Snake.Main as Snake
 import qualified HL2048.Main as HL2048
+import qualified TrafficJam.Main as TrafficJam
 
 import Z80
 import Z80.Utils
@@ -20,8 +21,10 @@ import System.Directory
 
 main :: IO ()
 main = do
+    emit "_build/tetris" $ org 20000 Tetris.game
     emit "_build/snake" $ org 20000 Snake.game
     emit "_build/hl2048" $ org 20000 HL2048.game
+    -- emit "_build/trafficjam" $ org 20000 TrafficJam.game
 
 emit :: String -> ASMBlock -> IO ()
 emit name block = do
@@ -29,16 +32,9 @@ emit name block = do
     BS.writeFile (name <.> "obj") $ asmData block
     BS.writeFile (name <.> "htp") $ htp (fromString $ takeBaseName name) block
 
-labelASCII :: Location -> [Word8]
-labelASCII loc = map (+ 0x30) $ digits
-  where
-    -- The length of this has to be lazy in the actual value of `loc`
-    digits = [fromIntegral $ (loc `div` (10 ^ i)) `mod` 10 | i <- [4, 3 .. 0]]
-
 htp :: BS.ByteString -> ASMBlock -> BS.ByteString
 htp label mainBlock = mconcat
     [ leader
-    -- , record label $ sysvars $ asmOrg mainBlock
     , record label $ org 0x4002 do
             dw [asmOrg mainBlock]
     , BS.singleton 0x01

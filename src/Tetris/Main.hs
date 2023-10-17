@@ -1,7 +1,7 @@
 {-# LANGUAGE NumericUnderscores, BlockArguments, BinaryLiterals, RecordWildCards #-}
 {-# LANGUAGE RecursiveDo #-}
 {-# LANGUAGE FlexibleContexts #-}
-module Tetris.Main (tetris) where
+module Tetris.Main (game) where
 
 import Tetris
 import Tetris.Draw
@@ -12,8 +12,8 @@ import Data.Word
 import Data.Bits
 import Control.Monad
 
-tetris :: Z80ASM
-tetris = do
+game :: Z80ASM
+game = do
     clearScreen
     rec
         drawSkeleton locs
