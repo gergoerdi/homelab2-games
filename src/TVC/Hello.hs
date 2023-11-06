@@ -3,6 +3,7 @@ module TVC.Hello (hello) where
 
 import Z80
 import TVC
+import Control.Monad
 
 -- https://github.com/konzolcowboy/TVCStudio/blob/master/Peldak/pr13.tvcasm
 hello :: Z80ASM
@@ -11,9 +12,10 @@ hello = mdo
     ld A [0x0b13]
     push AF
 
-    -- Graphics mode 16
     Z80.and 0b1111_1100
-    Z80.or  0b0000_0010
+    Z80.or  0b0000_0010 -- Graphics mode 16
+    -- Z80.or  0b0000_0001 -- Graphics mode 4
+    -- Z80.or  0b0000_0000 -- Graphics mode 2
     out [0x06] A
 
     -- Clear screen
@@ -21,9 +23,15 @@ hello = mdo
 
     call pageVideoIn
     ld DE videoStart
-    ld HL colors
-    ld BC 0x08
-    ldir
+    decLoopB 16 do
+        push BC
+        decLoopB 256 do
+            push BC
+            ld HL colors
+            ld BC 4
+            ldir
+            pop BC
+        pop BC
     call pageVideoOut
 
     -- Wait for keypress
@@ -32,9 +40,15 @@ hello = mdo
     -- Resore video mode
     pop AF
     out [0x06] A
+
     ret
 
-    colors <- labelled $ db [ 0x01, 0x0d, 0x31, 0x3d, 0xc1, 0xcd, 0xf1, 0xfd ]
+    colors <- labelled $ db
+      [ 0b1101_1000 -- RG
+      , 0b1100_0010 -- BK
+      , 0b1111_1101
+      , 0b1101_1011
+      ]
 
     pageVideoIn <- labelled do
         ld A 0x50
