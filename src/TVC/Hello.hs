@@ -12,26 +12,22 @@ hello = mdo
     push AF
 
     -- Graphics mode 16
-    Z80.and 0xfc
-    Z80.or 0x02
+    Z80.and 0b1111_1100
+    Z80.or  0b0000_0010
     out [0x06] A
 
     -- Clear screen
-    rst 0x30
-    db [0x05]
+    syscall 0x05
 
     call pageVideoIn
-
     ld DE videoStart
     ld HL colors
     ld BC 0x08
     ldir
-
     call pageVideoOut
 
     -- Wait for keypress
-    rst 0x30
-    db [0x91]
+    syscall 0x91
 
     -- Resore video mode
     pop AF
