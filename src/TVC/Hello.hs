@@ -2,12 +2,56 @@
 module TVC.Hello (hello) where
 
 import Z80
+import Z80.Utils
 import TVC
 import Control.Monad
 
--- https://github.com/konzolcowboy/TVCStudio/blob/master/Peldak/pr13.tvcasm
 hello :: Z80ASM
 hello = mdo
+    di
+    call int1
+
+    loopForever $ return ()
+
+    let setupLineInt y = do
+            let (lo, hi) = wordBytes $ (y `div` 4) * 64 {-+ 63-} -- - 46
+            crtcOut 0x0e hi
+            crtcOut 0x0f lo
+
+    int1 <- labelled mdo
+        push AF
+        push HL
+        out [0x07] A
+
+        -- Set border color to red
+        ld A 0b10_00_10_00
+        out [0x00] A
+
+        setInterruptHandler int2
+        setupLineInt 200
+
+        pop HL
+        pop AF
+        ei
+        ret
+
+    int2 <- labelled do
+        push AF
+        push HL
+        out [0x07] A
+
+        -- Set border color to green
+        ld A 0b10_10_00_00
+        out [0x00] A
+
+        setInterruptHandler int1
+        setupLineInt 160
+
+        pop HL
+        pop AF
+        ei
+        ret
+
     -- Save current graphics settings
     ld A [0x0b13]
     push AF
@@ -21,14 +65,16 @@ hello = mdo
     -- Clear screen
     syscall 0x05
 
+    -- -- Set interrupt
+
     call pageVideoIn
     ld DE videoStart
-    decLoopB 16 do
+    decLoopB 8 do
         push BC
         decLoopB 256 do
             push BC
             ld HL colors
-            ld BC 4
+            ld BC 8
             ldir
             pop BC
         pop BC
@@ -48,6 +94,10 @@ hello = mdo
       , 0b1100_0010 -- BK
       , 0b1111_1101
       , 0b1101_1011
+      , 0b0000_0000
+      , 0b0000_0000
+      , 0b0000_0000
+      , 0b0000_0000
       ]
 
     pageVideoIn <- labelled do
