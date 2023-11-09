@@ -1,7 +1,9 @@
 {-# LANGUAGE RecursiveDo, BlockArguments #-}
+{-# LANGUAGE FlexibleContexts #-}
 module Z80.Utils where
 
 import Z80
+import qualified Z80.Operations
 import Data.Word
 import Data.Bits
 import Data.Char
@@ -44,3 +46,8 @@ stringLoopB s body = skippable \end -> mdo
     jp end
     text <- labelled $ db $ map (fromIntegral . ord) s
     pure text
+
+unlessFlag :: (Jump cc (Location -> Z80ASM)) => cc -> Z80 a -> Z80 a
+unlessFlag f body = skippable \end -> do
+    jp f end :: Z80ASM
+    body

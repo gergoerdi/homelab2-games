@@ -1,43 +1,65 @@
 {-# LANGUAGE NumericUnderscores, BlockArguments, BinaryLiterals, RecursiveDo #-}
-module TVC.Hello (hello) where
+module TVC.Hello where
 
 import Z80
 import Z80.Utils
 import TVC
-import Control.Monad
 
-hello :: Z80ASM
-hello = mdo
+import Control.Monad
+import Codec.Picture
+import Data.Word
+import Data.Bits (shiftL, (.|.), (.&.))
+import Control.Lens (toListOf)
+import Data.List.Split (chunksOf)
+import Data.Char (ord)
+
+hello :: Image PixelRGB8 -> Z80ASM
+hello pic = mdo
     di
     setInterruptHandler handler
     ei
 
     -- Save current graphics settings
     ld A [0x0b13]
-    -- push AF
-
-    -- ld A [0x0b13]
-    -- Z80.and 0b1111_1100
-    -- Z80.or  0b0000_0010 -- Graphics mode 16
-    -- -- Z80.or  0b0000_0001 -- Graphics mode 4
-    -- -- Z80.or  0b0000_0000 -- Graphics mode 2
-    -- out [0x06] A
+    push AF
 
     -- Clear screen
     syscall 0x05
 
-    call pageVideoIn
-    ld DE videoStart
-    decLoopB 8 do
-        push BC
-        decLoopB 256 do
-            push BC
-            ld HL colors
-            ld BC 8
-            ldir
-            pop BC
-        pop BC
-    call pageVideoOut
+    -- Set border color to green
+    ld A 0b10_10_00_00
+    out [0x00] A
+
+    ld HL picData
+    ld A 0b00_11_00_00
+    call displayPicture
+
+    -- Print into text buffer
+    ld DE textBuf
+    replicateM_ 20 do
+        ld HL str
+        ld BC 13
+        ldir
+
+    -- Draw text
+    ld BC 0x010b
+    syscall 0x03
+    ld DE textBuf
+    ld BC (14 * 32)
+    syscall 0x02
+
+    -- -- Render glyph manually
+    -- call pageVideoIn
+    -- ld DE $ videoStart + 120 * 64
+    -- ld HL 0xc6fe
+    -- replicateM_ 10 do
+    --     ldVia A [DE] [HL]
+    --     ld A E
+    --     add A 64
+    --     ld E A
+    --     unlessFlag NC $ inc D
+    --     inc HL
+    -- call pageVideoOut
 
     -- Wait for keypress
     syscall 0x91
@@ -48,16 +70,13 @@ hello = mdo
 
     ret
 
-    colors <- labelled $ db
-      [ 0b1101_1000 -- RG
-      , 0b1100_0010 -- BK
-      , 0b1111_1101
-      , 0b1101_1011
-      , 0b0000_0000
-      , 0b0000_0000
-      , 0b0000_0000
-      , 0b0000_0000
-      ]
+    str <- labelled $ db $ map (fromIntegral . ord) "Hello World! "
+    textBuf <- labelled $ db $ replicate (14 * 32) 0x20
+
+    picData <- labelled $ db
+        [ interleave p1 p2
+        | [p1, p2] <- chunksOf 2 $ map rgb2 $ toListOf imagePixels pic
+        ]
 
     pageVideoIn <- labelled do
         ld A 0x50
@@ -70,6 +89,50 @@ hello = mdo
         ld [0x03] A
         out [0x02] A
         ret
+
+    -- Pre: HL is the start of the 80x40 pixel picture data
+    -- Pre: A is the background color
+    displayPicture <- labelled do
+        push AF
+        call pageVideoIn
+
+        -- Set palette 0 (background) for text
+        ld A 0b00_11_00_00
+        out [0x60] A
+        -- Set palette 1 (foreground) for text
+        ld A 0b11_11_11_11
+        out [0x61] A
+
+        pop AF
+
+        ld DE videoStart
+        decLoopB 96 do
+            push BC
+            decLoopB 64 do
+                ld [DE] A
+                inc DE
+            pop BC
+        let nextRow = do
+                ld A E
+                add A (64 - 40)
+                ld E A
+                unlessFlag NC $ inc D
+
+        ld DE $ videoStart + (8 * 64) + ((64 - 40) `div` 2)
+        decLoopB 40 do
+            push BC
+
+            push HL
+            ld BC 40
+            ldir
+            nextRow
+            pop HL
+            ld BC 40
+            ldir
+            nextRow
+
+            pop BC
+        jp pageVideoOut
 
     let setupLineInt y = do
             let (lo, hi) = wordBytes $ (y `div` 4) * 64 {-+ 63-} -- - 46
@@ -89,30 +152,27 @@ hello = mdo
         jp Z half2
 
         half1 <- labelled do
-            -- Set border color to green
-            ld A 0b10_10_00_00
-            out [0x00] A
+            -- -- Set border color to green
+            -- ld A 0b10_10_00_00
+            -- out [0x00] A
 
             ld A [0x0b13]
             Z80.and 0b1111_1100
             Z80.or  0b0000_0010 -- Graphics mode 16
-            -- Z80.or  0b0000_0001 -- Graphics mode 4
-            -- Z80.or  0b0000_0000 -- Graphics mode 2
             out [0x06] A
 
-            setupLineInt 80
+            setupLineInt 94
         jp finish
 
         half2 <- labelled do
-            -- Set border color to red
-            ld A 0b10_00_10_00
-            out [0x00] A
+            -- -- Set border color to red
+            -- ld A 0b10_00_10_00
+            -- out [0x00] A
 
             ld A [0x0b13]
             Z80.and 0b1111_1100
-            -- Z80.or  0b0000_0010 -- Graphics mode 16
-            -- Z80.or  0b0000_0001 -- Graphics mode 4
-            Z80.or  0b0000_0000 -- Graphics mode 2
+            Z80.or  0b0000_0001 -- Graphics mode 4
+            -- Z80.or  0b0000_0000 -- Graphics mode 2
             out [0x06] A
 
             setupLineInt 239
@@ -125,3 +185,18 @@ hello = mdo
         ret
 
     pure ()
+
+interleave :: Word8 -> Word8 -> Word8
+interleave x y = (x' `shiftL` 1) .|. y'
+  where
+    x' = spread x
+    y' = spread y
+
+    -- https://graphics.stanford.edu/~seander/bithacks.html#InterleaveBMN
+    spread b = foldr (\(s, m) b -> (b .|. (b `shiftL` s)) .&. m) b (zip [1, 2, 4] [0x55, 0x33, 0x0f])
+
+rgb2 :: PixelRGB8 -> Word8
+rgb2 (PixelRGB8 r g b) = 0b1000 .|. (bit g `shiftL` 2) .|. (bit r `shiftL` 1) .|. bit b
+  where
+    bit 0x00 = 0
+    bit 0xff = 1
