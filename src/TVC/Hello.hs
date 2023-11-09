@@ -13,9 +13,18 @@ import Control.Lens (toListOf)
 import Data.List.Split (chunksOf)
 import Data.Char (ord)
 
+bufRows :: Word16
+bufRows = 14
+
+charsPerRow :: Word16
+charsPerRow = 32
+
 hello :: Image PixelRGB8 -> Z80ASM
 hello pic = mdo
     di
+    -- Set video mode 4
+    ld C 1
+    syscall 4
     setInterruptHandler handler
     ei
 
@@ -45,7 +54,8 @@ hello pic = mdo
     ld BC 0x010b
     syscall 0x03
     ld DE textBuf
-    ld BC (14 * 32)
+    -- ld BC (bufRows * charsPerRow)
+    ld BC (1 * charsPerRow)
     syscall 0x02
 
     -- -- Render glyph manually
@@ -71,7 +81,7 @@ hello pic = mdo
     ret
 
     str <- labelled $ db $ map (fromIntegral . ord) "Hello World! "
-    textBuf <- labelled $ db $ replicate (14 * 32) 0x20
+    textBuf <- labelled $ db $ replicate (fromIntegral $ bufRows * charsPerRow) 0x20
 
     picData <- labelled $ db
         [ interleave p1 p2
