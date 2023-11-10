@@ -22,6 +22,7 @@ charsPerRow = 32
 hello :: Image PixelRGB8 -> Z80ASM
 hello pic = mdo
     di
+
     -- Set video mode 4
     ld C 1
     syscall 4
@@ -58,6 +59,14 @@ hello pic = mdo
     ld BC (1 * charsPerRow)
     syscall 0x02
 
+    loopForever $ do
+        ld A [lastKey]
+        cp 0xff
+        unlessFlag Z do
+            ld C A
+            syscall 0x01
+            ldVia A [lastKey] 0xff
+
     -- -- Render glyph manually
     -- call pageVideoIn
     -- ld DE $ videoStart + 120 * 64
@@ -71,6 +80,8 @@ hello pic = mdo
     --     inc HL
     -- call pageVideoOut
 
+    loopForever $ pure ()
+
     -- Wait for keypress
     syscall 0x91
 
@@ -79,14 +90,6 @@ hello pic = mdo
     out [0x06] A
 
     ret
-
-    str <- labelled $ db $ map (fromIntegral . ord) "Hello World! "
-    textBuf <- labelled $ db $ replicate (fromIntegral $ bufRows * charsPerRow) 0x20
-
-    picData <- labelled $ db
-        [ interleave p1 p2
-        | [p1, p2] <- chunksOf 2 $ map rgb2 $ toListOf imagePixels pic
-        ]
 
     pageVideoIn <- labelled do
         ld A 0x50
@@ -153,7 +156,10 @@ hello pic = mdo
 
     handler <- labelled mdo
         push AF
+        push BC
+        push DE
         push HL
+        push IX
         out [0x07] A
 
         ld A [whichHalf]
@@ -161,10 +167,10 @@ hello pic = mdo
         ld [whichHalf] A
         jp Z half2
 
-        half1 <- labelled do
-            -- -- Set border color to green
-            -- ld A 0b10_10_00_00
-            -- out [0x00] A
+        half1 <- labelled mdo
+            -- Set border color to dark green
+            ld A 0b00_10_00_00
+            out [0x00] A
 
             ld A [0x0b13]
             Z80.and 0b1111_1100
@@ -172,12 +178,58 @@ hello pic = mdo
             out [0x06] A
 
             setupLineInt 94
-        jp finish
+
+            -- Scan keyboard
+            ld A [0x0b11]
+            Z80.and 0xf0
+            ld C A
+            ld HL kbdBuf
+            decLoopB 10 do
+                ld A C
+                inc C
+
+                out [0x03] A
+                in_ A [0x58]
+
+                ld [HL] A
+                inc HL
+
+            -- Compare keyboard state with previous state
+            ld HL kbdBuf
+            ld IX kbdPrevBuf
+            ld C 0
+            decLoopB 10 do
+                ld A [HL]
+                cpl
+                Z80.and [IX]
+                replicateM_ 8 do
+                    srl A
+                    jp C found
+                    inc C
+                inc HL
+                inc IX
+            ldVia A [lastKey] 0xff
+            jp copyKbdBuf
+
+            found <- labelled do
+                ldVia A [lastKey] C
+
+            copyKbdBuf <- labelled do
+                ld DE kbdPrevBuf
+                ld HL kbdBuf
+                ld BC 10
+                ldir
+
+            -- Set border color to dark green
+            ld A 0b10_10_00_00
+            out [0x00] A
+
+            jp finish
 
         half2 <- labelled do
-            -- -- Set border color to red
-            -- ld A 0b10_00_10_00
-            -- out [0x00] A
+            -- Set border color to red
+            ld A 0b10_00_10_00
+            out [0x00] A
 
             ld A [0x0b13]
             Z80.and 0b1111_1100
@@ -186,13 +238,27 @@ hello pic = mdo
             out [0x06] A
 
             setupLineInt 239
-
         finish <- label
 
+        pop IX
         pop HL
+        pop DE
+        pop BC
         pop AF
         ei
         ret
+
+    str <- labelled $ db $ map (fromIntegral . ord) "Hello World! "
+    textBuf <- labelled $ db $ replicate (fromIntegral $ bufRows * charsPerRow) 0x20
+    kbdPrevBuf <- labelled $ db $ replicate 10 0x00
+    kbdBuf <- labelled $ db $ replicate 10 0x00
+    lastKey <- labelled $ db [0xff]
+
+
+    picData <- labelled $ db
+        [ interleave p1 p2
+        | [p1, p2] <- chunksOf 2 $ map rgb2 $ toListOf imagePixels pic
+        ]
 
     pure ()
 
