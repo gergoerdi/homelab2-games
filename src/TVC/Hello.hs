@@ -12,6 +12,8 @@ import Data.Bits (shiftL, (.|.), (.&.))
 import Control.Lens (toListOf)
 import Data.List.Split (chunksOf)
 import Data.Char (ord)
+import qualified Data.ByteString as BS
+import Data.Maybe (fromMaybe)
 
 bufRows :: Word16
 bufRows = 14
@@ -62,9 +64,20 @@ hello pic = mdo
     loopForever $ do
         ld A [lastKey]
         cp 0xff
-        unlessFlag Z do
+        unlessFlag Z mdo
+            ld HL keyData
+            add A L
+            ld L A
+            unlessFlag NC $ inc H
+            ld A [HL]
+
+            -- push AF
+            -- call printByte
+            -- pop AF
+
             ld C A
             syscall 0x01
+
             ldVia A [lastKey] 0xff
 
     -- -- Render glyph manually
@@ -248,12 +261,44 @@ hello pic = mdo
         ei
         ret
 
+    toHex <- labelled mdo
+        cp 10
+        jp NC hex
+        add A 0x30
+        ret
+        hex <- label
+        add A $ 0x61 - 10
+        ret
+
+    printByte <- labelled do
+        push BC
+
+        push AF
+        Z80.and 0xf0
+        replicateM_ 4 $ srl A
+        call toHex
+
+        ld C A
+        syscall 0x01
+
+        pop AF
+        Z80.and 0x0f
+        call toHex
+
+        ld C A
+        syscall 0x01
+
+        pop BC
+        ret
+
+
     str <- labelled $ db $ map (fromIntegral . ord) "Hello World! "
     textBuf <- labelled $ db $ replicate (fromIntegral $ bufRows * charsPerRow) 0x20
     kbdPrevBuf <- labelled $ db $ replicate 10 0x00
     kbdBuf <- labelled $ db $ replicate 10 0x00
     lastKey <- labelled $ db [0xff]
 
+    keyData <- labelled $ db $ toByteMap keymap
 
     picData <- labelled $ db
         [ interleave p1 p2
@@ -276,3 +321,48 @@ rgb2 (PixelRGB8 r g b) = 0b1000 .|. (bit g `shiftL` 2) .|. (bit r `shiftL` 1) .|
   where
     bit 0x00 = 0
     bit 0xff = 1
+
+toByteMap :: [(Word8, Word8)] -> BS.ByteString
+toByteMap vals = BS.pack [ fromMaybe 0 val | addr <- [0..255], let val = lookup addr vals ]
+
+keymap :: [(Word8, Word8)]
+keymap = map (fromIntegral . ord <$>)
+    [ (0x06, '1')
+    , (0x02, '2')
+    , (0x01, '3')
+    , (0x07, '4')
+    , (0x00, '5')
+    , (0x04, '6')
+    , (0x0f, '7')
+    , (0x09, '8')
+    , (0x0a, '9')
+    , (0x03, '0')
+    , (0x16, 'q')
+    , (0x12, 'w')
+    , (0x11, 'e')
+    , (0x17, 'r')
+    , (0x10, 't')
+    , (0x36, 'y')
+    , (0x1f, 'u')
+    , (0x19, 'i')
+    , (0x1a, 'o')
+    , (0x1e, 'p')
+    , (0x26, 'a')
+    , (0x22, 's')
+    , (0x21, 'd')
+    , (0x27, 'f')
+    , (0x20, 'g')
+    , (0x24, 'h')
+    , (0x2f, 'j')
+    , (0x29, 'k')
+    , (0x2a, 'l')
+    , (0x14, 'z')
+    , (0x32, 'x')
+    , (0x31, 'c')
+    , (0x37, 'v')
+    , (0x30, 'b')
+    , (0x3d, ' ')
+    , (0x2c, '\n')
+    , (0x39, ',')
+    , (0x3a, '.')
+    ]
