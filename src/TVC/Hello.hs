@@ -132,7 +132,7 @@ hello pic = mdo
         pop AF
 
         ld DE videoStart
-        decLoopB 96 do
+        decLoopB 98 do
             push BC
             decLoopB 64 do
                 ld [DE] A
@@ -161,7 +161,7 @@ hello pic = mdo
         jp pageVideoOut
 
     let setupLineInt y = do
-            let (lo, hi) = wordBytes $ (y `div` 4) * 64 {-+ 63-} -- - 46
+            let (lo, hi) = wordBytes $ y * 16 {-+ 63-} -- - 46
             crtcOut 0x0e hi
             crtcOut 0x0f lo
 
@@ -190,7 +190,7 @@ hello pic = mdo
             Z80.or  0b0000_0010 -- Graphics mode 16
             out [0x06] A
 
-            setupLineInt 94
+            setupLineInt 95
 
             -- Scan keyboard
             ld A [0x0b11]
@@ -240,9 +240,11 @@ hello pic = mdo
             jp finish
 
         half2 <- labelled do
-            -- Set border color to red
-            ld A 0b10_00_10_00
-            out [0x00] A
+            -- -- Set border color to red
+            -- ld A 0b00_00_10_00
+            -- out [0x00] A
+
+            decLoopB 20 $ pure ()
 
             ld A [0x0b13]
             Z80.and 0b1111_1100
@@ -251,6 +253,11 @@ hello pic = mdo
             out [0x06] A
 
             setupLineInt 239
+
+            -- Set border color to bright red
+            ld A 0b10_00_10_00
+            out [0x00] A
+
         finish <- label
 
         pop IX
