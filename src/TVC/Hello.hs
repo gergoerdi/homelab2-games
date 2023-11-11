@@ -1,4 +1,4 @@
-{-# LANGUAGE NumericUnderscores, BlockArguments, BinaryLiterals, RecursiveDo #-}
+{-# LANGUAGE NumericUnderscores, BlockArguments, BinaryLiterals, RecursiveDo, LambdaCase #-}
 module TVC.Hello where
 
 import Z80
@@ -63,16 +63,44 @@ hello pic = mdo
     --     ld BC 13
     --     ldir
 
-    -- Draw text
+    ldVia A [lineNum] 0x0b
     ld BC 0x010b
     syscall 0x03
-    -- ld DE textBuf
-    -- -- ld BC (bufRows * charsPerRow)
-    -- ld BC (1 * charsPerRow)
+    ld HL str
+    ld IX lineNum
+    skippable \finished -> withLabel \loop -> mdo
+        ld A [HL]
+        cp 0x00
+        jp Z finished
+
+        inc HL
+        cp $ fromIntegral . ord $ '\n'
+        jp Z newLine
+
+        ld C A
+        push HL
+        printCharC
+        pop HL
+
+        jp loop
+
+        newLine <- label
+        inc [IX]
+        call beginningOfLine
+        jp loop
+        pure ()
+
+    -- -- ld DE textBuf
+    -- -- -- ld BC (bufRows * charsPerRow)
+    -- -- ld BC (1 * charsPerRow)
+    -- -- syscall 0x02
+    -- ld DE str
+    -- ld BC 208
     -- syscall 0x02
-    ld DE str
-    ld BC 208
-    syscall 0x02
+
+    -- ldVia A [lineNum] 0x12 -- TODO: which line?
+    inc [IX]
+    inc [IX]
 
     ld HL inputBuf
     call inputLine
@@ -162,9 +190,10 @@ hello pic = mdo
         jp Z half2
 
         half1 <- labelled mdo
-            -- Set border color to dark green
-            ld A 0b00_10_00_00
-            out [0x00] A
+            when False do
+                -- Set border color to dark green
+                ld A 0b00_10_00_00
+                out [0x00] A
 
             ld A [0x0b13]
             Z80.and 0b1111_1100
@@ -222,16 +251,18 @@ hello pic = mdo
                 ld BC 10
                 ldir
 
-            -- Set border color to dark green
-            ld A 0b10_10_00_00
-            out [0x00] A
+            when False do
+                -- Set border color to dark green
+                ld A 0b10_10_00_00
+                out [0x00] A
 
             jp finish
 
         half2 <- labelled do
-            -- -- Set border color to red
-            -- ld A 0b00_00_10_00
-            -- out [0x00] A
+            when False do
+                -- Set border color to red
+                ld A 0b00_00_10_00
+                out [0x00] A
 
             decLoopB 20 $ pure ()
 
@@ -243,9 +274,10 @@ hello pic = mdo
 
             setupLineInt 239
 
-            -- Set border color to bright red
-            ld A 0b10_00_10_00
-            out [0x00] A
+            when False do
+                -- Set border color to bright red
+                ld A 0b10_00_10_00
+                out [0x00] A
 
         finish <- label
 
@@ -268,9 +300,7 @@ hello pic = mdo
 
     -- Input one line of text, store result in `[HL]`
     -- Mangles `HL`, `A`, and `B`
-    inputLine <- labelled mdo
-        ldVia A [lineNum] 0x12 -- TODO: which line?
-
+    inputLine <- labelled do
         push HL
         ldVia A C [lineNum]
         ld B 0x01
@@ -387,9 +417,11 @@ hello pic = mdo
                 ret
             pure ()
 
-
-        lineNum <- labelled $ db [0]
-        pure ()
+    beginningOfLine <- labelled do
+        ldVia A C [lineNum]
+        ld B 1
+        syscall 0x03
+        ret
 
     printByte <- labelled do
         push BC
@@ -441,11 +473,15 @@ hello pic = mdo
         ret
 
 
-    str <- labelled $ db $ map (fromIntegral . ord) $ mconcat
-          ["Visszanyeri az eszméletét és halkan beszélni kezd: "
-          , "Szörnyű mészárlás volt... Megöltek mindenkit a faluban... "
-          , "A vezetőjüket Hakainak szólították... "
-          , "Állj bosszút, fiam... - Félrebillen a feje... Halott... "
+    str <- labelled $ db $ (<> [0x00]) $ map tvcChar $ unlines
+          [ "Visszanyeri az eszméletét és"
+          , "halkan beszélni kezd: Szörnyű"
+          , "mészárlás volt... Megöltek"
+          , "mindenkit a faluban... A"
+          , "vezetőjüket Hakainak"
+          , "szólították... Állj bosszút,"
+          , "fiam... - Félrebillen a feje..."
+          , "Halott..."
           ]
     textBuf <- labelled $ db $ replicate (fromIntegral $ bufRows * charsPerRow) 0x20
     kbdPrevState <- labelled $ db $ replicate 10 0x00
@@ -453,6 +489,7 @@ hello pic = mdo
     kbdBuf <- labelled $ db $ replicate 2 0xff
     kbdBufW <- labelled $ db [0]
     kbdBufR <- labelled $ db [0]
+    lineNum <- labelled $ db [0]
 
     keyData <- labelled $ db $ toByteMap keymap
 
@@ -527,3 +564,25 @@ keymap = map (fromIntegral . ord <$>)
     , (0x39, ',')
     , (0x3a, '.')
     ]
+
+tvcChar :: Char -> Word8
+tvcChar = \case
+    'Á' -> 0x80
+    'É' -> 0x81
+    'Í' -> 0x82
+    'Ó' -> 0x83
+    'Ö' -> 0x84
+    'Ő' -> 0x85
+    'Ú' -> 0x86
+    'Ü' -> 0x87
+    'Ű' -> 0x88
+    'á' -> 0x90
+    'é' -> 0x91
+    'í' -> 0x92
+    'ó' -> 0x93
+    'ö' -> 0x94
+    'ő' -> 0x95
+    'ú' -> 0x96
+    'ü' -> 0x97
+    'ű' -> 0x98
+    c -> fromIntegral . ord $ c
