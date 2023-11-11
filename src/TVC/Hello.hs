@@ -21,9 +21,15 @@ bufRows = 14
 charsPerRow :: Word16
 charsPerRow = 32
 
+maxInput :: Word8
+maxInput = 30
+
 hello :: Image PixelRGB8 -> Z80ASM
 hello pic = mdo
     di
+
+    -- Save current graphics settings
+    ld A [0x0b13]
 
     -- Set video mode 4
     ld C 1
@@ -31,9 +37,13 @@ hello pic = mdo
     setInterruptHandler handler
     ei
 
-    -- Save current graphics settings
-    ld A [0x0b13]
-    push AF
+    -- Set palette 1 (foreground) for text
+    ld A 0b11_11_11_11
+    out [0x61] A
+
+    -- Set palette 2 (user input)
+    ld A 0b00_00_00_00
+    out [0x62] A
 
     -- Clear screen
     syscall 0x05
@@ -61,24 +71,18 @@ hello pic = mdo
     ld BC (1 * charsPerRow)
     syscall 0x02
 
+    -- Set color for user input
+    ldVia A [0x0b4d] 2
+    ld C $ fromIntegral . ord $ '>'
+    printCharC
+    ld C $ fromIntegral . ord $ '_'
+    printCharC
+
     loopForever $ do
         call readChar
         unlessFlag Z mdo
             ld C A
-            syscall 0x01
-
-    -- -- Render glyph manually
-    -- call pageVideoIn
-    -- ld DE $ videoStart + 120 * 64
-    -- ld HL 0xc6fe
-    -- replicateM_ 10 do
-    --     ldVia A [DE] [HL]
-    --     ld A E
-    --     add A 64
-    --     ld E A
-    --     unlessFlag NC $ inc D
-    --     inc HL
-    -- call pageVideoOut
+            printCharC
 
     loopForever $ pure ()
 
@@ -112,9 +116,6 @@ hello pic = mdo
         -- Set palette 0 (background) for text
         ld A 0b00_11_00_00
         out [0x60] A
-        -- Set palette 1 (foreground) for text
-        ld A 0b11_11_11_11
-        out [0x61] A
 
         pop AF
 
@@ -272,6 +273,77 @@ hello pic = mdo
         add A $ 0x61 - 10
         ret
 
+    -- Input one line of text, store result in `[HL]`
+    -- Mangles `HL`, `A`, and `B`
+    inputLine <- labelled do
+        ld BC 0x010d -- TODO: go to start of line
+        syscall 0x03
+
+        -- Set color for user input
+        ldVia A [0x0b4d] 2
+
+        -- Draw prompt
+        ld C $ fromIntegral . ord $ '>'
+        printCharC
+
+        ld B maxInput
+        withLabel \loop -> mdo
+            ld [HL] 0xff
+            withLabel \waitForInput -> do
+                call readChar
+                jp Z waitForInput
+
+            -- cp 0x0d -- End of line
+            -- jr Z enter
+            -- cp 0x07 -- Backspace
+            -- jr Z backspace
+
+            -- Normal character: print and record
+            dec B
+            jr Z noMoreRoom
+            ld C A
+            printCharC
+            ld [HL] A
+            inc HL
+            jr loop
+
+            noMoreRoom <- labelled do
+                inc B -- So that next `dec B` will trigger `Z` again
+                dec HL
+                ld [HL] A
+                ld A 0x07 -- Erase previous last character
+                rst 0x28
+                ld A [HL] -- Print new last character
+                inc HL
+                rst 0x28
+                jr loop
+
+            -- backspace <- labelled do
+            --     -- Try to increase B
+            --     inc B
+            --     skippable \inRange -> do
+            --         ld A B
+            --         cp 39
+            --         jr NZ inRange
+            --         dec B
+            --         jr loop
+
+            --     ld A 0x07
+            --     rst 0x28
+            --     ld [HL] 0x00
+            --     dec HL
+            --     jr loop
+
+            -- enter <- labelled do
+            --     ld [HL] 0x20
+            --     inc HL
+            --     ld [HL] 0xff
+            --     ret
+            pure ()
+
+
+
+
     printByte <- labelled do
         push BC
 
@@ -336,6 +408,9 @@ hello pic = mdo
         [ interleave p1 p2
         | [p1, p2] <- chunksOf 2 $ map rgb2 $ toListOf imagePixels pic
         ]
+
+
+    inputBuf <- labelled $ resb $ fromIntegral maxInput
 
     pure ()
 

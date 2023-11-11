@@ -13,6 +13,9 @@ syscall op = do
     rst 0x30
     db [op]
 
+printCharC :: Z80ASM
+printCharC = syscall 0x01
+
 crtcReg :: Word8
 crtcReg = 0x70
 
