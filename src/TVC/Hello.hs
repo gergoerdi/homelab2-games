@@ -62,23 +62,10 @@ hello pic = mdo
     syscall 0x02
 
     loopForever $ do
-        ld A [lastKey]
-        cp 0xff
+        call readChar
         unlessFlag Z mdo
-            ld HL keyData
-            add A L
-            ld L A
-            unlessFlag NC $ inc H
-            ld A [HL]
-
-            -- push AF
-            -- call printByte
-            -- pop AF
-
             ld C A
             syscall 0x01
-
-            ldVia A [lastKey] 0xff
 
     -- -- Render glyph manually
     -- call pageVideoIn
@@ -196,7 +183,7 @@ hello pic = mdo
             ld A [0x0b11]
             Z80.and 0xf0
             ld C A
-            ld HL kbdBuf
+            ld HL kbdState
             decLoopB 10 do
                 ld A C
                 inc C
@@ -208,8 +195,8 @@ hello pic = mdo
                 inc HL
 
             -- Compare keyboard state with previous state
-            ld HL kbdBuf
-            ld IX kbdPrevBuf
+            ld HL kbdState
+            ld IX kbdPrevState
             ld C 0
             decLoopB 10 do
                 ld A [HL]
@@ -221,15 +208,23 @@ hello pic = mdo
                     inc C
                 inc HL
                 inc IX
-            ldVia A [lastKey] 0xff
-            jp copyKbdBuf
+            jp copyKbdState
 
             found <- labelled do
-                ldVia A [lastKey] C
+                ld A [kbdBufW]
+                inc A
+                Z80.and 0b1
+                ld [kbdBufW] A
 
-            copyKbdBuf <- labelled do
-                ld DE kbdPrevBuf
                 ld HL kbdBuf
+                add A L
+                ld L A
+                unlessFlag NC $ inc H
+                ld [HL] C
+
+            copyKbdState <- labelled do
+                ld DE kbdPrevState
+                ld HL kbdState
                 ld BC 10
                 ldir
 
@@ -298,12 +293,42 @@ hello pic = mdo
         pop BC
         ret
 
+    -- Post: `A` is character, flag `Z` iff no character is available
+    readChar <- labelled do
+        ld A [kbdBufR]
+        inc A
+        Z80.and 0b1
+        ld [kbdBufR] A
+
+        ld HL kbdBuf
+        add A L
+        ld L A
+        unlessFlag NC $ inc H
+        ld A [HL]
+        ld [HL] 0xff
+        cp 0xff
+        ret Z
+
+        -- push AF
+        -- call printByte
+        -- pop AF
+
+        ld HL keyData
+        add A L
+        ld L A
+        unlessFlag NC $ inc H
+        ld A [HL]
+        cp 0x00
+        ret
+
 
     str <- labelled $ db $ map (fromIntegral . ord) "Hello World! "
     textBuf <- labelled $ db $ replicate (fromIntegral $ bufRows * charsPerRow) 0x20
-    kbdPrevBuf <- labelled $ db $ replicate 10 0x00
-    kbdBuf <- labelled $ db $ replicate 10 0x00
-    lastKey <- labelled $ db [0xff]
+    kbdPrevState <- labelled $ db $ replicate 10 0x00
+    kbdState <- labelled $ db $ replicate 10 0x00
+    kbdBuf <- labelled $ db $ replicate 2 0xff
+    kbdBufW <- labelled $ db [0]
+    kbdBufR <- labelled $ db [0]
 
     keyData <- labelled $ db $ toByteMap keymap
 
@@ -344,6 +369,7 @@ keymap = map (fromIntegral . ord <$>)
     , (0x09, '8')
     , (0x0a, '9')
     , (0x03, '0')
+    , (0x28, '\BS')
     , (0x16, 'q')
     , (0x12, 'w')
     , (0x11, 'e')
@@ -368,8 +394,10 @@ keymap = map (fromIntegral . ord <$>)
     , (0x31, 'c')
     , (0x37, 'v')
     , (0x30, 'b')
+    , (0x34, 'n')
+    , (0x3f, 'm')
     , (0x3d, ' ')
-    , (0x2c, '\n')
+    , (0x2c, '\LF')
     , (0x39, ',')
     , (0x3a, '.')
     ]
