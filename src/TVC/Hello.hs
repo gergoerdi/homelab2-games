@@ -10,6 +10,7 @@ import Codec.Picture
 import Data.Word
 import Data.Bits (shiftL, (.|.), (.&.))
 import Control.Lens (toListOf)
+import Data.List (intercalate)
 import Data.List.Split (chunksOf)
 import Data.Char (ord)
 import qualified Data.ByteString as BS
@@ -18,14 +19,16 @@ import Data.Maybe (fromMaybe)
 bufRows :: Word16
 bufRows = 14
 
-charsPerRow :: Word16
+charsPerRow :: Word8
 charsPerRow = 32
 
 maxInput :: Word8
-maxInput = 31
+maxInput = charsPerRow - 1
 
 hello :: Image PixelRGB8 -> Z80ASM
 hello pic = mdo
+    let printCharC = call myPrintCharCMode4
+
     di
 
     -- Save current graphics settings
@@ -64,57 +67,23 @@ hello pic = mdo
     --     ldir
 
     ldVia A [lineNum] 0x0b
+    ldVia A [colNum] 0x00
     ld BC 0x010b
     syscall 0x03
     ld HL str
-    ld IX lineNum
-    skippable \finished -> withLabel \loop -> mdo
-        ld A [HL]
-        cp 0x00
-        jp Z finished
+    call printStr
 
-        inc HL
-        cp $ fromIntegral . ord $ '\n'
-        jp Z newLine
-
-        ld C A
-        push HL
-        printCharC
-        pop HL
-
-        jp loop
-
-        newLine <- label
-        inc [IX]
-        call beginningOfLine
-        jp loop
-        pure ()
-
-    -- -- ld DE textBuf
-    -- -- -- ld BC (bufRows * charsPerRow)
-    -- -- ld BC (1 * charsPerRow)
-    -- -- syscall 0x02
-    -- ld DE str
-    -- ld BC 208
-    -- syscall 0x02
-
-    -- ldVia A [lineNum] 0x12 -- TODO: which line?
-    inc [IX]
-    inc [IX]
-
+    call newLine
+    call newLine
     ld HL inputBuf
     call inputLine
+    call newLine
+    call newLine
+    ld HL str2
+    call printStr
+
 
     loopForever $ pure ()
-
-    -- Wait for keypress
-    syscall 0x91
-
-    -- Resore video mode
-    pop AF
-    out [0x06] A
-
-    ret
 
     pageVideoIn <- labelled do
         ld A 0x50
@@ -406,6 +375,9 @@ hello pic = mdo
                 call printBack
                 ld C $ fromIntegral . ord $ ' '
                 printCharC
+
+                -- Restore color
+                ldVia A [0x0b4d] 1
                 ret
 
             printBack <- labelled do
@@ -415,10 +387,15 @@ hello pic = mdo
                 ld B A
                 syscall 0x03
                 ret
+
             pure ()
 
-    beginningOfLine <- labelled do
-        ldVia A C [lineNum]
+    newLine <- labelled do
+        ldVia A [colNum] 0
+        ld A [lineNum]
+        inc A
+        ld [lineNum] A
+        ld C A
         ld B 1
         syscall 0x03
         ret
@@ -472,24 +449,55 @@ hello pic = mdo
         cp 0x00
         ret
 
+    myPrintCharCMode4 <- labelled $ do
+        syscall 0x01
+        ret
 
-    str <- labelled $ db $ (<> [0x00]) $ map tvcChar $ unlines
-          [ "Visszanyeri az eszméletét és"
-          , "halkan beszélni kezd: Szörnyű"
-          , "mészárlás volt... Megöltek"
-          , "mindenkit a faluban... A"
-          , "vezetőjüket Hakainak"
-          , "szólították... Állj bosszút,"
-          , "fiam... - Félrebillen a feje..."
-          , "Halott..."
-          ]
-    textBuf <- labelled $ db $ replicate (fromIntegral $ bufRows * charsPerRow) 0x20
+    printStr <- labelled $ do
+        ld D charsPerRow
+        withLabel \loop -> mdo
+            ld A [HL]
+            cp 0x00
+            ret Z
+
+            inc HL
+            cp $ fromIntegral . ord $ '\n'
+            jp Z isNewLine
+
+            ld C A
+            push HL
+            printCharC
+            pop HL
+
+            dec D
+            jp NZ loop
+
+            isNewLine <- label
+            ld D charsPerRow
+            call newLine
+            jp loop
+        pure ()
+
+    str <- labelled $ db $ (<> [0x00]) $ map tvcChar $ intercalate "\n"
+      [ "Visszanyeri az eszméletét és"
+      , "halkan beszélni kezd: Szörnyű"
+      , "mészárlás volt... Megöltek"
+      , "mindenkit a faluban... A"
+      , "vezetőjüket Hakainak"
+      , "szólították... Állj bosszút,"
+      , "fiam... - Félrebillen a feje..."
+      , "Halott..."
+      ]
+    str2 <- labelled $ db $ (<> [0x00]) $ map tvcChar $
+      "Nem értem, próbálkozz mással!"
+    textBuf <- labelled $ db $ replicate (fromIntegral $ bufRows * fromIntegral charsPerRow) 0x20
     kbdPrevState <- labelled $ db $ replicate 10 0x00
     kbdState <- labelled $ db $ replicate 10 0x00
     kbdBuf <- labelled $ db $ replicate 2 0xff
     kbdBufW <- labelled $ db [0]
     kbdBufR <- labelled $ db [0]
     lineNum <- labelled $ db [0]
+    colNum <- labelled $ db [0]
 
     keyData <- labelled $ db $ toByteMap keymap
 
