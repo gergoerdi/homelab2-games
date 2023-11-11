@@ -22,7 +22,7 @@ charsPerRow :: Word16
 charsPerRow = 32
 
 maxInput :: Word8
-maxInput = 30
+maxInput = 31
 
 hello :: Image PixelRGB8 -> Z80ASM
 hello pic = mdo
@@ -71,18 +71,8 @@ hello pic = mdo
     ld BC (1 * charsPerRow)
     syscall 0x02
 
-    -- Set color for user input
-    ldVia A [0x0b4d] 2
-    ld C $ fromIntegral . ord $ '>'
-    printCharC
-    ld C $ fromIntegral . ord $ '_'
-    printCharC
-
-    loopForever $ do
-        call readChar
-        unlessFlag Z mdo
-            ld C A
-            printCharC
+    ld HL inputBuf
+    call inputLine
 
     loopForever $ pure ()
 
@@ -276,7 +266,8 @@ hello pic = mdo
     -- Input one line of text, store result in `[HL]`
     -- Mangles `HL`, `A`, and `B`
     inputLine <- labelled do
-        ld BC 0x010d -- TODO: go to start of line
+        push HL
+        ld BC 0x010d -- TODO: which line?
         syscall 0x03
 
         -- Set color for user input
@@ -285,60 +276,105 @@ hello pic = mdo
         -- Draw prompt
         ld C $ fromIntegral . ord $ '>'
         printCharC
+        pop HL
 
         ld B maxInput
         withLabel \loop -> mdo
             ld [HL] 0xff
+
+            push BC
+            push HL
+
+            push BC
+            ld C $ fromIntegral . ord $ '_'
+            printCharC
+            pop BC
+            push BC
+            call printBack
+            pop BC
+
             withLabel \waitForInput -> do
                 call readChar
                 jp Z waitForInput
+            pop HL
+            pop BC
 
-            -- cp 0x0d -- End of line
-            -- jr Z enter
-            -- cp 0x07 -- Backspace
-            -- jr Z backspace
+            cp $ fromIntegral . ord $ '\n' -- End of line
+            jr Z enter
+            cp $ fromIntegral . ord $ '\DEL' -- Backspace
+            jr Z backspace
 
             -- Normal character: print and record
             dec B
             jr Z noMoreRoom
             ld C A
+            push BC
+            push HL
             printCharC
+            pop HL
+            pop BC
             ld [HL] A
             inc HL
             jr loop
 
             noMoreRoom <- labelled do
                 inc B -- So that next `dec B` will trigger `Z` again
-                dec HL
-                ld [HL] A
-                ld A 0x07 -- Erase previous last character
-                rst 0x28
-                ld A [HL] -- Print new last character
-                inc HL
-                rst 0x28
+            --     dec HL
+            --     ld [HL] A
+
+            --     -- Erase previous character
+
+            --     ld A 0x07 -- Erase previous last character
+            --     rst 0x28
+            --     ld A [HL] -- Print new last character
+            --     inc HL
+            --     rst 0x28
                 jr loop
 
-            -- backspace <- labelled do
-            --     -- Try to increase B
-            --     inc B
-            --     skippable \inRange -> do
-            --         ld A B
-            --         cp 39
-            --         jr NZ inRange
-            --         dec B
-            --         jr loop
+            backspace <- labelled do
+                -- Try to increase B
+                inc B
+                skippable \inRange -> do
+                    ld A B
+                    cp (maxInput + 1)
+                    jr NZ inRange
+                    dec B
+                    jr loop
 
-            --     ld A 0x07
-            --     rst 0x28
-            --     ld [HL] 0x00
-            --     dec HL
-            --     jr loop
+                -- Replace last printed character with a space
+                push HL
+                push BC
+                ld C $ fromIntegral . ord $ ' '
+                printCharC
+                pop BC
+                push BC
+                call printBack
+                ld C $ fromIntegral . ord $ ' '
+                printCharC
+                pop BC
+                push BC
+                call printBack
+                pop BC
+                pop HL
 
-            -- enter <- labelled do
-            --     ld [HL] 0x20
-            --     inc HL
-            --     ld [HL] 0xff
-            --     ret
+                ld [HL] 0x00
+                dec HL
+                jr loop
+
+            enter <- labelled do
+                ld [HL] 0x20
+                inc HL
+                ld [HL] 0xff
+                ret
+
+            printBack <- labelled do
+                ld C 0x0d -- TODO: which line?
+                ld A (maxInput + 2)
+                sub B
+                ld B A
+                syscall 0x03
+                ret
+
             pure ()
 
 
@@ -409,8 +445,7 @@ hello pic = mdo
         | [p1, p2] <- chunksOf 2 $ map rgb2 $ toListOf imagePixels pic
         ]
 
-
-    inputBuf <- labelled $ resb $ fromIntegral maxInput
+    inputBuf <- labelled $ db $ replicate (fromIntegral maxInput) 0xff
 
     pure ()
 
@@ -444,7 +479,7 @@ keymap = map (fromIntegral . ord <$>)
     , (0x09, '8')
     , (0x0a, '9')
     , (0x03, '0')
-    , (0x28, '\BS')
+    , (0x28, '\DEL')
     , (0x16, 'q')
     , (0x12, 'w')
     , (0x11, 'e')
@@ -472,7 +507,7 @@ keymap = map (fromIntegral . ord <$>)
     , (0x34, 'n')
     , (0x3f, 'm')
     , (0x3d, ' ')
-    , (0x2c, '\LF')
+    , (0x2c, '\n')
     , (0x39, ',')
     , (0x3a, '.')
     ]
