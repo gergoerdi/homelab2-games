@@ -56,19 +56,22 @@ hello pic = mdo
     ld A 0b00_11_00_00
     call displayPicture
 
-    -- Print into text buffer
-    ld DE textBuf
-    replicateM_ 20 do
-        ld HL str
-        ld BC 13
-        ldir
+    -- -- Print into text buffer
+    -- ld DE textBuf
+    -- replicateM_ 20 do
+    --     ld HL str
+    --     ld BC 13
+    --     ldir
 
     -- Draw text
     ld BC 0x010b
     syscall 0x03
-    ld DE textBuf
-    -- ld BC (bufRows * charsPerRow)
-    ld BC (1 * charsPerRow)
+    -- ld DE textBuf
+    -- -- ld BC (bufRows * charsPerRow)
+    -- ld BC (1 * charsPerRow)
+    -- syscall 0x02
+    ld DE str
+    ld BC 208
     syscall 0x02
 
     ld HL inputBuf
@@ -265,9 +268,12 @@ hello pic = mdo
 
     -- Input one line of text, store result in `[HL]`
     -- Mangles `HL`, `A`, and `B`
-    inputLine <- labelled do
+    inputLine <- labelled mdo
+        ldVia A [lineNum] 0x12 -- TODO: which line?
+
         push HL
-        ld BC 0x010d -- TODO: which line?
+        ldVia A C [lineNum]
+        ld B 0x01
         syscall 0x03
 
         -- Set color for user input
@@ -365,20 +371,25 @@ hello pic = mdo
                 ld [HL] 0x20
                 inc HL
                 ld [HL] 0xff
+
+                -- Remove cursor
+                call printBack
+                ld C $ fromIntegral . ord $ ' '
+                printCharC
                 ret
 
             printBack <- labelled do
-                ld C 0x0d -- TODO: which line?
+                ldVia A C [lineNum]
                 ld A (maxInput + 2)
                 sub B
                 ld B A
                 syscall 0x03
                 ret
-
             pure ()
 
 
-
+        lineNum <- labelled $ db [0]
+        pure ()
 
     printByte <- labelled do
         push BC
@@ -430,7 +441,12 @@ hello pic = mdo
         ret
 
 
-    str <- labelled $ db $ map (fromIntegral . ord) "Hello World! "
+    str <- labelled $ db $ map (fromIntegral . ord) $ mconcat
+          ["Visszanyeri az eszméletét és halkan beszélni kezd: "
+          , "Szörnyű mészárlás volt... Megöltek mindenkit a faluban... "
+          , "A vezetőjüket Hakainak szólították... "
+          , "Állj bosszút, fiam... - Félrebillen a feje... Halott... "
+          ]
     textBuf <- labelled $ db $ replicate (fromIntegral $ bufRows * charsPerRow) 0x20
     kbdPrevState <- labelled $ db $ replicate 10 0x00
     kbdState <- labelled $ db $ replicate 10 0x00
