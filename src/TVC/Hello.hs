@@ -72,7 +72,7 @@ hello charset pic = mdo
     --     ld BC 13
     --     ldir
 
-    ldVia A [lineNum] 0x0b
+    ldVia A [lineNum] 0x0d
     ldVia A [colNum] 0x00
 
     -- ld C 0
@@ -465,16 +465,12 @@ hello charset pic = mdo
     -- Pre: `C` is the character to print
     -- Clobbers `AF`, `BC`, `HL`, `IX`
     myPrintCharCMode4 <- labelled $ do
-        -- A = 10 * lineNum
+        -- A = 8 * lineNum
         ld A [lineNum]
         sub 0
-        rla
-        ld B A
-        rla
-        rla
-        add A B
+        replicateM_ 3 rla
 
-        -- HL = 64 * (10 * lineNum)
+        -- HL = 64 * (8 * lineNum)
         ld H 0
         ld L A
         decLoopB 6 do
