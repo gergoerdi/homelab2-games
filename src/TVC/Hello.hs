@@ -20,7 +20,7 @@ bufRows :: Word16
 bufRows = 14
 
 charsPerRow :: Word8
-charsPerRow = 64 -- 32
+charsPerRow = 32
 
 charHeight :: Word8
 charHeight = 10
@@ -40,8 +40,8 @@ hello charset pic = mdo
     -- Save current graphics settings
     ld A [0x0b13]
 
-    -- Set video mode 2
-    ld C 0
+    -- Set video mode 4
+    ld C 1
     syscall 4
     setInterruptHandler handler
     ei
@@ -85,18 +85,20 @@ hello charset pic = mdo
     --     push BC
     --     call newLine
     --     pop BC
+    -- loopForever $ pure ()
 
+    call setMainColor
     ld HL str
     call printStr
 
-    -- call newLine
-    -- call newLine
-    -- ld HL inputBuf
-    -- call inputLine
-    -- call newLine
-    -- call newLine
-    -- ld HL str2
-    -- call printStr
+    call newLine
+    call newLine
+    ld HL inputBuf
+    call inputLine
+    call newLine
+    call newLine
+    ld HL str2
+    call printStr
 
     loopForever $ pure ()
 
@@ -252,8 +254,8 @@ hello charset pic = mdo
 
             ld A [0x0b13]
             Z80.and 0b1111_1100
-            -- Z80.or  0b0000_0001 -- Graphics mode 4
-            Z80.or  0b0000_0000 -- Graphics mode 2
+            Z80.or  0b0000_0001 -- Graphics mode 4
+            -- Z80.or  0b0000_0000 -- Graphics mode 2
             out [0x06] A
 
             setupLineInt 239
@@ -285,13 +287,8 @@ hello charset pic = mdo
     -- Input one line of text, store result in `[HL]`
     -- Mangles `HL`, `A`, and `B`
     inputLine <- labelled do
-        push HL
-        ldVia A C [lineNum]
-        ld B 0x01
-        syscall 0x03
-
         -- Set color for user input
-        ldVia A [0x0b4d] 2
+        call setInputColor
 
         -- Draw prompt
         ld C $ tvcChar '>'
@@ -464,7 +461,7 @@ hello charset pic = mdo
 
     -- Pre: `C` is the character to print
     -- Clobbers `AF`, `BC`, `HL`, `IX`
-    myPrintCharCMode4 <- labelled $ do
+    myPrintCharCMode4 <- labelled mdo
         -- A = 8 * lineNum
         ld A [lineNum]
         sub 0
@@ -477,13 +474,9 @@ hello charset pic = mdo
             sla L
             rl H
 
-        -- -- HL += 2 * colNum
-        -- ld A [colNum]
-        -- sla A
-
-        -- HL += colNum
+        -- HL += 2 * colNum
         ld A [colNum]
-
+        sla A
         add A L
         unlessFlag NC $ inc H
         ld L A
@@ -505,36 +498,70 @@ hello charset pic = mdo
         replicateM_ 3 $ do
             rl E
             rl D
-        -- add A E
-        -- unlessFlag NC $ inc D
-        -- ld E A
-        -- ld IX $ 0xc574 + 9 * 33
-        -- ld IX $ 0xc574 - 0x20 * 9
         ld IX charsetData
         add IX DE
 
-        -- cmp 0x80
-        -- jp Z ascii
-
-
         call pageVideoIn
-        -- ld DE $ rowStride - 1
-        ld DE rowStride
-        decLoopB 8 do
-            ld A [IX]
-            inc IX
-            ld [HL] A
-            add HL DE
 
-            -- ld [HL] 0b11_11_11_11
-            -- inc HL
-            -- ld [HL] 0b11_11_11_11
-            -- add HL DE
+        ld A [drawColorIsInput]
+        cp 0x00
+        ld DE $ rowStride - 1
+        jp NZ drawInput
+
+        drawOutput <- labelled do
+            decLoopB 8 mdo
+                ld A [IX]
+                inc IX
+                ld C A
+
+                -- Byte 1: First four pixels
+                Z80.and 0xf0
+                ld [HL] A
+                inc HL
+
+                ld A C
+                replicateM_ 4 rla
+                Z80.and 0xf0
+
+                ld [HL] A
+                add HL DE
+            jp drawDone
+
+        drawInput <- labelled do
+            decLoopB 8 mdo
+                ld A [IX]
+                inc IX
+                ld C A
+
+                -- Byte 1: First four pixels
+                replicateM_ 4 $ srl A
+                ld [HL] A
+                inc HL
+
+                ld A C
+                Z80.and 0x0f
+                -- replicateM_ 4 rla
+                -- Z80.and 0xf0
+
+                ld [HL] A
+                add HL DE
+            jp drawDone
+
+
+        drawDone <- label
         jp pageVideoOut
         -- syscall 0x01
         ret
 
-    printStr <- labelled $ do
+    setMainColor <- labelled do
+        ldVia A [drawColorIsInput] 0x00
+        ret
+
+    setInputColor <- labelled do
+        ldVia A [drawColorIsInput] 0xff
+        ret
+
+    printStr <- labelled do
         withLabel \loop -> mdo
             ld A [HL]
             cp 0xff
@@ -575,6 +602,7 @@ hello charset pic = mdo
     kbdBufR <- labelled $ db [0]
     lineNum <- labelled $ db [0]
     colNum <- labelled $ db [0]
+    drawColorIsInput <- labelled $ db [0]
 
     keyData <- labelled $ db $ toByteMap keymap
     charsetData <- labelled $ db charset
@@ -672,5 +700,6 @@ tvcChar = \case
     'ú' -> 0x78
     'ü' -> 0x2a
     'ű' -> 0x5f
+    '_' -> 0x6f
     c | isLower c -> fromIntegral (ord c) - 0x60
       | otherwise -> fromIntegral (ord c)
