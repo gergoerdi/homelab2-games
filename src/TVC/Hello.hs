@@ -379,13 +379,11 @@ hello charset pic = mdo
                 ld [HL] 0xff
 
                 -- Remove cursor
-                call printBack
                 ld C $ tvcChar ' '
                 printCharC
 
                 -- Restore color
-                ldVia A [0x0b4d] 1
-                ret
+                jp setMainColor
             pure ()
 
     newLine <- labelled do
@@ -393,9 +391,6 @@ hello charset pic = mdo
         ld A [lineNum]
         inc A
         ld [lineNum] A
-        ld C A
-        ld B 1
-        syscall 0x03
         ret
 
     printByte <- labelled do
