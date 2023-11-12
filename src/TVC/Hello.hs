@@ -63,12 +63,14 @@ hello charset pic = mdo
     -- Clear screen
     syscall 0x05
 
-    -- Set border color to green
-    ld A 0b10_10_00_00
+    -- -- Set border color to green
+    -- ld A 0b10_10_00_00
+    ld A 0b00_00_10_00
     out [0x00] A
 
     ld HL picData
-    ld A 0b00_11_00_00
+    -- ld A 0b00_11_00_00
+    ld A 0b11_00_11_00
     call displayPicture
 
     -- -- Print into text buffer
@@ -96,9 +98,15 @@ hello charset pic = mdo
     call setMainColor
     ld HL str
     call printStr
+    call newLine
+    call newLine
+
+    ld HL str'
+    call printStr
+    call newLine
+    call newLine
 
     loopForever do
-        call newLine
         call newLine
         ld HL inputBuf
         call inputLine
@@ -106,6 +114,7 @@ hello charset pic = mdo
         call newLine
         ld HL str2
         call printStr
+        call newLine
 
     loopForever $ pure ()
 
@@ -126,13 +135,12 @@ hello charset pic = mdo
     displayPicture <- labelled do
         push AF
         call pageVideoIn
-
-        -- Set palette 0 (background) for text
-        ld A 0b00_11_00_00
-        out [0x60] A
-
         pop AF
 
+        -- Set palette 0 (background) for text
+        out [0x60] A
+
+        -- Fill background of picture area
         ld DE videoStart
         decLoopB 90 do
             push BC
@@ -146,6 +154,7 @@ hello charset pic = mdo
                 ld E A
                 unlessFlag NC $ inc D
 
+        -- Draw picture
         ld DE $ videoStart + (8 * 64) + ((64 - 40) `div` 2)
         decLoopB 40 do
             push BC
@@ -285,10 +294,10 @@ hello charset pic = mdo
     toHex <- labelled mdo
         cp 10
         jp NC hex
-        add A 0x30
+        add A $ tvcChar '0'
         ret
         hex <- label
-        add A $ 0x61 - 10
+        add A $ tvcChar 'a' - 10
         ret
 
     -- Input one line of text, store result in `[HL]`
@@ -591,14 +600,27 @@ hello charset pic = mdo
         pure ()
 
     str <- labelled $ db $ (<> [0xff]) $ map tvcChar $ intercalate "\n"
-      [ "Visszanyeri az eszméletét és"
-      , "halkan beszélni kezd: Szörnyű"
-      , "mészárlás volt... Megöltek"
-      , "mindenkit a faluban... A"
-      , "vezetőjüket Hakainak"
-      , "szólították... Állj bosszút,"
-      , "fiam... - Félrebillen a feje..."
-      , "Halott..."
+      [ "Egy barátságos kis szobában"
+      , "vagy. Egy fiatal srác ül egy"
+      , "C64-es előtt. Hirtelen hátra-"
+      , "fordul és beszélni kezd:"
+      ]
+      -- [ "Visszanyeri az eszméletét és"
+      -- , "halkan beszélni kezd: Szörnyű"
+      -- , "mészárlás volt... Megöltek"
+      -- , "mindenkit a faluban... A"
+      -- , "vezetőjüket Hakainak"
+      -- , "szólították... Állj bosszút,"
+      -- , "fiam... - Félrebillen a feje..."
+      -- , "Halott..."
+      -- ]
+    str' <- labelled $ db $ (<> [0xff]) $ map tvcChar $ intercalate "\n"
+      [ "Oh! Egy új játékos! Köszöntelek"
+      , "a programomban! A küldetésed"
+      , "akkor kezdődik, mikor kilépsz a"
+      , "mögötted lévő ajtón! Beszélj"
+      , "mindenkivel és mindent vizsgálj"
+      , "meg!"
       ]
     str2 <- labelled $ db $ (<> [0xff]) $ map tvcChar $
       "Nem értem, próbálkozz mással!"
