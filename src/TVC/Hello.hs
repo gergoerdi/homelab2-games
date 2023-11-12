@@ -12,7 +12,7 @@ import Data.Bits (shiftL, (.|.), (.&.))
 import Control.Lens (toListOf)
 import Data.List (intercalate)
 import Data.List.Split (chunksOf)
-import Data.Char (ord)
+import Data.Char (ord, isLower)
 import qualified Data.ByteString as BS
 import Data.Maybe (fromMaybe)
 
@@ -20,13 +20,19 @@ bufRows :: Word16
 bufRows = 14
 
 charsPerRow :: Word8
-charsPerRow = 32
+charsPerRow = 64 -- 32
+
+charHeight :: Word8
+charHeight = 10
 
 maxInput :: Word8
 maxInput = charsPerRow - 1
 
-hello :: Image PixelRGB8 -> Z80ASM
-hello pic = mdo
+rowStride :: Word16
+rowStride = 64
+
+hello :: BS.ByteString -> Image PixelRGB8 -> Z80ASM
+hello charset pic = mdo
     let printCharC = call myPrintCharCMode4
 
     di
@@ -34,8 +40,8 @@ hello pic = mdo
     -- Save current graphics settings
     ld A [0x0b13]
 
-    -- Set video mode 4
-    ld C 1
+    -- Set video mode 2
+    ld C 0
     syscall 4
     setInterruptHandler handler
     ei
@@ -68,20 +74,29 @@ hello pic = mdo
 
     ldVia A [lineNum] 0x0b
     ldVia A [colNum] 0x00
-    ld BC 0x010b
-    syscall 0x03
+
+    -- ld C 0
+    -- replicateM_ 8 do
+    --     decLoopB 16 do
+    --         push BC
+    --         printCharC
+    --         pop BC
+    --         inc C
+    --     push BC
+    --     call newLine
+    --     pop BC
+
     ld HL str
     call printStr
 
-    call newLine
-    call newLine
-    ld HL inputBuf
-    call inputLine
-    call newLine
-    call newLine
-    ld HL str2
-    call printStr
-
+    -- call newLine
+    -- call newLine
+    -- ld HL inputBuf
+    -- call inputLine
+    -- call newLine
+    -- call newLine
+    -- ld HL str2
+    -- call printStr
 
     loopForever $ pure ()
 
@@ -237,8 +252,8 @@ hello pic = mdo
 
             ld A [0x0b13]
             Z80.and 0b1111_1100
-            Z80.or  0b0000_0001 -- Graphics mode 4
-            -- Z80.or  0b0000_0000 -- Graphics mode 2
+            -- Z80.or  0b0000_0001 -- Graphics mode 4
+            Z80.or  0b0000_0000 -- Graphics mode 2
             out [0x06] A
 
             setupLineInt 239
@@ -279,7 +294,7 @@ hello pic = mdo
         ldVia A [0x0b4d] 2
 
         -- Draw prompt
-        ld C $ fromIntegral . ord $ '>'
+        ld C $ tvcChar '>'
         printCharC
         pop HL
 
@@ -291,7 +306,7 @@ hello pic = mdo
             push HL
 
             push BC
-            ld C $ fromIntegral . ord $ '_'
+            ld C $ tvcChar '_'
             printCharC
             pop BC
             push BC
@@ -304,9 +319,9 @@ hello pic = mdo
             pop HL
             pop BC
 
-            cp $ fromIntegral . ord $ '\n' -- End of line
+            cp $ tvcChar '\n' -- End of line
             jr Z enter
-            cp $ fromIntegral . ord $ '\DEL' -- Backspace
+            cp $ tvcChar '\DEL' -- Backspace
             jr Z backspace
 
             -- Normal character: print and record
@@ -349,12 +364,12 @@ hello pic = mdo
                 -- Replace last printed character with a space
                 push HL
                 push BC
-                ld C $ fromIntegral . ord $ ' '
+                ld C $ tvcChar ' '
                 printCharC
                 pop BC
                 push BC
                 call printBack
-                ld C $ fromIntegral . ord $ ' '
+                ld C $ tvcChar ' '
                 printCharC
                 pop BC
                 push BC
@@ -373,21 +388,12 @@ hello pic = mdo
 
                 -- Remove cursor
                 call printBack
-                ld C $ fromIntegral . ord $ ' '
+                ld C $ tvcChar ' '
                 printCharC
 
                 -- Restore color
                 ldVia A [0x0b4d] 1
                 ret
-
-            printBack <- labelled do
-                ldVia A C [lineNum]
-                ld A (maxInput + 2)
-                sub B
-                ld B A
-                syscall 0x03
-                ret
-
             pure ()
 
     newLine <- labelled do
@@ -409,14 +415,14 @@ hello pic = mdo
         call toHex
 
         ld C A
-        syscall 0x01
+        printCharC
 
         pop AF
         Z80.and 0x0f
         call toHex
 
         ld C A
-        syscall 0x01
+        printCharC
 
         pop BC
         ret
@@ -449,36 +455,111 @@ hello pic = mdo
         cp 0x00
         ret
 
+    printBack <- labelled do
+        ld A [colNum]
+        dec A
+        -- unlessFlag NC $ ld A 0
+        ld [colNum] A
+        ret
+
+    -- Pre: `C` is the character to print
+    -- Clobbers `AF`, `BC`, `HL`, `IX`
     myPrintCharCMode4 <- labelled $ do
-        syscall 0x01
+        -- A = 10 * lineNum
+        ld A [lineNum]
+        sub 0
+        rla
+        ld B A
+        rla
+        rla
+        add A B
+
+        -- HL = 64 * (10 * lineNum)
+        ld H 0
+        ld L A
+        decLoopB 6 do
+            sla L
+            rl H
+
+        -- -- HL += 2 * colNum
+        -- ld A [colNum]
+        -- sla A
+
+        -- HL += colNum
+        ld A [colNum]
+
+        add A L
+        unlessFlag NC $ inc H
+        ld L A
+
+        -- HL += videoStart
+        ld DE videoStart
+        add HL DE
+
+        -- Increase column number
+        -- TODO: newLine when needed
+        ld A [colNum]
+        inc A
+        ld [colNum] A
+
+        -- Search for character start address
+        ld D 0
+        ld E C
+        sub 0
+        replicateM_ 3 $ do
+            rl E
+            rl D
+        -- add A E
+        -- unlessFlag NC $ inc D
+        -- ld E A
+        -- ld IX $ 0xc574 + 9 * 33
+        -- ld IX $ 0xc574 - 0x20 * 9
+        ld IX charsetData
+        add IX DE
+
+        -- cmp 0x80
+        -- jp Z ascii
+
+
+        call pageVideoIn
+        -- ld DE $ rowStride - 1
+        ld DE rowStride
+        decLoopB 8 do
+            ld A [IX]
+            inc IX
+            ld [HL] A
+            add HL DE
+
+            -- ld [HL] 0b11_11_11_11
+            -- inc HL
+            -- ld [HL] 0b11_11_11_11
+            -- add HL DE
+        jp pageVideoOut
+        -- syscall 0x01
         ret
 
     printStr <- labelled $ do
-        ld D charsPerRow
         withLabel \loop -> mdo
             ld A [HL]
-            cp 0x00
+            cp 0xff
             ret Z
 
             inc HL
-            cp $ fromIntegral . ord $ '\n'
+            cp $ tvcChar '\n'
             jp Z isNewLine
 
             ld C A
             push HL
             printCharC
             pop HL
-
-            dec D
-            jp NZ loop
+            jp loop
 
             isNewLine <- label
-            ld D charsPerRow
             call newLine
             jp loop
         pure ()
 
-    str <- labelled $ db $ (<> [0x00]) $ map tvcChar $ intercalate "\n"
+    str <- labelled $ db $ (<> [0xff]) $ map tvcChar $ intercalate "\n"
       [ "Visszanyeri az eszméletét és"
       , "halkan beszélni kezd: Szörnyű"
       , "mészárlás volt... Megöltek"
@@ -488,7 +569,7 @@ hello pic = mdo
       , "fiam... - Félrebillen a feje..."
       , "Halott..."
       ]
-    str2 <- labelled $ db $ (<> [0x00]) $ map tvcChar $
+    str2 <- labelled $ db $ (<> [0xff]) $ map tvcChar $
       "Nem értem, próbálkozz mással!"
     textBuf <- labelled $ db $ replicate (fromIntegral $ bufRows * fromIntegral charsPerRow) 0x20
     kbdPrevState <- labelled $ db $ replicate 10 0x00
@@ -500,6 +581,7 @@ hello pic = mdo
     colNum <- labelled $ db [0]
 
     keyData <- labelled $ db $ toByteMap keymap
+    charsetData <- labelled $ db charset
 
     picData <- labelled $ db
         [ interleave p1 p2
@@ -529,7 +611,7 @@ toByteMap :: [(Word8, Word8)] -> BS.ByteString
 toByteMap vals = BS.pack [ fromMaybe 0 val | addr <- [0..255], let val = lookup addr vals ]
 
 keymap :: [(Word8, Word8)]
-keymap = map (fromIntegral . ord <$>)
+keymap = map (tvcChar <$>)
     [ (0x06, '1')
     , (0x02, '2')
     , (0x01, '3')
@@ -575,22 +657,24 @@ keymap = map (fromIntegral . ord <$>)
 
 tvcChar :: Char -> Word8
 tvcChar = \case
-    'Á' -> 0x80
-    'É' -> 0x81
-    'Í' -> 0x82
-    'Ó' -> 0x83
-    'Ö' -> 0x84
-    'Ő' -> 0x85
-    'Ú' -> 0x86
-    'Ü' -> 0x87
-    'Ű' -> 0x88
-    'á' -> 0x90
-    'é' -> 0x91
-    'í' -> 0x92
-    'ó' -> 0x93
-    'ö' -> 0x94
-    'ő' -> 0x95
-    'ú' -> 0x96
-    'ü' -> 0x97
-    'ű' -> 0x98
-    c -> fromIntegral . ord $ c
+    '\n' -> 0xf0
+    'Á' -> 0x6d
+    'É' -> 0x6c
+    'Í' -> 0x61
+    'Ó' -> 0x76
+    'Ö' -> 0x75
+    'Ő' -> 0x1b
+    'Ú' -> 0x64
+    'Ü' -> 0x40
+    'Ű' -> 0x1b
+    'á' -> 0x70
+    'é' -> 0x71
+    'í' -> 0x62
+    'ó' -> 0x79
+    'ö' -> 0x00
+    'ő' -> 0x64
+    'ú' -> 0x78
+    'ü' -> 0x2a
+    'ű' -> 0x5f
+    c | isLower c -> fromIntegral (ord c) - 0x60
+      | otherwise -> fromIntegral (ord c)

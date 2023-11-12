@@ -19,13 +19,15 @@ import Data.Word
 
 main :: IO ()
 main = do
+    charSet <- BS.readFile "/home/cactus/prog/retro/homelab/ratkai/_obj/charset.bin"
+
     let picNum = 1 :: Word8
     let fileName = "/home/cactus/prog/c64/bosszu-disasm/pics/ep128" </> printf "ram.mem-%02d" picNum <.> "png"
     pic <- readImage fileName >>= \case
         Right pic -> pure $ convertRGB8 pic
         Left err -> error err
 
-    emit "_build/hello" $ TVC.Hello.hello pic
+    emit "_build/hello" $ TVC.Hello.hello charSet pic
 
 emit :: String -> Z80ASM -> IO ()
 emit name prog = do
