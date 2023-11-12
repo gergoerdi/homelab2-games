@@ -22,8 +22,14 @@ bufRows = 14
 charsPerRow :: Word8
 charsPerRow = 32
 
+firstLine :: Word8
+firstLine = 12
+
+lastLine :: Word8
+lastLine = 30
+
 charHeight :: Word8
-charHeight = 10
+charHeight = 8
 
 maxInput :: Word8
 maxInput = charsPerRow - 1
@@ -72,8 +78,8 @@ hello charset pic = mdo
     --     ld BC 13
     --     ldir
 
-    ldVia A [lineNum] 0x0d
-    ldVia A [colNum] 0x00
+    ldVia A [lineNum] firstLine
+    ldVia A [colNum] 0
 
     -- ld C 0
     -- replicateM_ 8 do
@@ -91,14 +97,15 @@ hello charset pic = mdo
     ld HL str
     call printStr
 
-    call newLine
-    call newLine
-    ld HL inputBuf
-    call inputLine
-    call newLine
-    call newLine
-    ld HL str2
-    call printStr
+    loopForever do
+        call newLine
+        call newLine
+        ld HL inputBuf
+        call inputLine
+        call newLine
+        call newLine
+        ld HL str2
+        call printStr
 
     loopForever $ pure ()
 
@@ -127,15 +134,15 @@ hello charset pic = mdo
         pop AF
 
         ld DE videoStart
-        decLoopB 98 do
+        decLoopB 90 do
             push BC
             decLoopB 64 do
                 ld [DE] A
                 inc DE
             pop BC
         let nextRow = do
-                ld A E
-                add A (64 - 40)
+                ld A (64 - 40)
+                add A E
                 ld E A
                 unlessFlag NC $ inc D
 
@@ -186,7 +193,7 @@ hello charset pic = mdo
             Z80.or  0b0000_0010 -- Graphics mode 16
             out [0x06] A
 
-            setupLineInt 95
+            setupLineInt 87
 
             -- Scan keyboard
             ld A [0x0b11]
@@ -386,11 +393,21 @@ hello charset pic = mdo
                 jp setMainColor
             pure ()
 
-    newLine <- labelled do
+    newLine <- labelled mdo
         ldVia A [colNum] 0
         ld A [lineNum]
         inc A
+        cp lastLine
+        jp Z scrollUp
         ld [lineNum] A
+        ret
+        scrollUp <- label
+        call pageVideoIn
+        ld HL $ videoStart + (fromIntegral firstLine + 1) * rowStride * fromIntegral charHeight
+        ld DE $ videoStart + fromIntegral firstLine * rowStride * fromIntegral charHeight
+        ld BC $ (fromIntegral $ lastLine - firstLine) * rowStride * fromIntegral charHeight
+        ldir
+        call pageVideoOut
         ret
 
     printByte <- labelled do
