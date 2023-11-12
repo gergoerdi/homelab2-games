@@ -37,6 +37,9 @@ maxInput = charsPerRow - 1
 rowStride :: Word16
 rowStride = 64
 
+kbdBufLen :: Word8
+kbdBufLen = 4 -- Has to be a power of 2
+
 hello :: BS.ByteString -> Image PixelRGB8 -> Z80ASM
 hello charset pic = mdo
     let printCharC = call myPrintCharCMode4
@@ -238,7 +241,7 @@ hello charset pic = mdo
             found <- labelled do
                 ld A [kbdBufW]
                 inc A
-                Z80.and 0b1
+                Z80.and $ kbdBufLen - 1
                 ld [kbdBufW] A
 
                 ld HL kbdBuf
@@ -444,7 +447,7 @@ hello charset pic = mdo
     readChar <- labelled do
         ld A [kbdBufR]
         inc A
-        Z80.and 0b1
+        Z80.and $ kbdBufLen - 1
         ld [kbdBufR] A
 
         ld HL kbdBuf
@@ -627,7 +630,7 @@ hello charset pic = mdo
     textBuf <- labelled $ db $ replicate (fromIntegral $ bufRows * fromIntegral charsPerRow) 0x20
     kbdPrevState <- labelled $ db $ replicate 10 0x00
     kbdState <- labelled $ db $ replicate 10 0x00
-    kbdBuf <- labelled $ db $ replicate 2 0xff
+    kbdBuf <- labelled $ db $ replicate (fromIntegral kbdBufLen) 0xff
     kbdBufW <- labelled $ db [0]
     kbdBufR <- labelled $ db [0]
     lineNum <- labelled $ db [0]
