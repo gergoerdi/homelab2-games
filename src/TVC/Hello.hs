@@ -291,6 +291,7 @@ hello charset pic = mdo
         call setInputColor
 
         -- Draw prompt
+        push HL
         ld C $ tvcChar '>'
         printCharC
         pop HL
@@ -305,8 +306,6 @@ hello charset pic = mdo
             push BC
             ld C $ tvcChar '_'
             printCharC
-            pop BC
-            push BC
             call printBack
             pop BC
 
@@ -363,13 +362,9 @@ hello charset pic = mdo
                 push BC
                 ld C $ tvcChar ' '
                 printCharC
-                pop BC
-                push BC
-                call printBack
+                replicateM_ 2 $ call printBack
                 ld C $ tvcChar ' '
                 printCharC
-                pop BC
-                push BC
                 call printBack
                 pop BC
                 pop HL
@@ -455,6 +450,7 @@ hello charset pic = mdo
     printBack <- labelled do
         ld A [colNum]
         dec A
+        -- dec A
         -- unlessFlag NC $ ld A 0
         ld [colNum] A
         ret
