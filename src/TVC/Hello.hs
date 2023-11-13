@@ -6,7 +6,6 @@ import Z80.Utils
 import TVC
 
 import Control.Monad
-import Codec.Picture
 import Data.Word
 import Data.Bits (shiftL, (.|.), (.&.))
 import Control.Lens (toListOf)
@@ -40,7 +39,7 @@ rowStride = 64
 kbdBufLen :: Word8
 kbdBufLen = 4 -- Has to be a power of 2
 
-hello :: BS.ByteString -> Image PixelRGB8 -> Z80ASM
+hello :: BS.ByteString -> BS.ByteString -> Z80ASM
 hello charset pic = mdo
     let printCharC = call myPrintCharCMode4
 
@@ -66,22 +65,13 @@ hello charset pic = mdo
     -- Clear screen
     syscall 0x05
 
-    -- -- Set border color to green
-    -- ld A 0b10_10_00_00
+    -- -- Set border color
     ld A 0b00_00_10_00
     out [0x00] A
 
     ld HL picData
-    -- ld A 0b00_11_00_00
-    ld A 0b11_00_11_00
+    ld A 0b00_11_11_00
     call displayPicture
-
-    -- -- Print into text buffer
-    -- ld DE textBuf
-    -- replicateM_ 20 do
-    --     ld HL str
-    --     ld BC 13
-    --     ldir
 
     ldVia A [lineNum] firstLine
     ldVia A [colNum] 0
@@ -627,7 +617,11 @@ hello charset pic = mdo
       ]
     str2 <- labelled $ db $ (<> [0xff]) $ map tvcChar $
       "Nem értem, próbálkozz mással!"
-    textBuf <- labelled $ db $ replicate (fromIntegral $ bufRows * fromIntegral charsPerRow) 0x20
+
+    keyData <- labelled $ db $ toByteMap keymap
+    charsetData <- labelled $ db charset
+    picData <- labelled $ db pic
+
     kbdPrevState <- labelled $ db $ replicate 10 0x00
     kbdState <- labelled $ db $ replicate 10 0x00
     kbdBuf <- labelled $ db $ replicate (fromIntegral kbdBufLen) 0xff
@@ -637,32 +631,9 @@ hello charset pic = mdo
     colNum <- labelled $ db [0]
     drawColorIsInput <- labelled $ db [0]
 
-    keyData <- labelled $ db $ toByteMap keymap
-    charsetData <- labelled $ db charset
-
-    picData <- labelled $ db
-        [ interleave p1 p2
-        | [p1, p2] <- chunksOf 2 $ map rgb2 $ toListOf imagePixels pic
-        ]
-
     inputBuf <- labelled $ db $ replicate (fromIntegral maxInput) 0xff
 
     pure ()
-
-interleave :: Word8 -> Word8 -> Word8
-interleave x y = (x' `shiftL` 1) .|. y'
-  where
-    x' = spread x
-    y' = spread y
-
-    -- https://graphics.stanford.edu/~seander/bithacks.html#InterleaveBMN
-    spread b = foldr (\(s, m) b -> (b .|. (b `shiftL` s)) .&. m) b (zip [1, 2, 4] [0x55, 0x33, 0x0f])
-
-rgb2 :: PixelRGB8 -> Word8
-rgb2 (PixelRGB8 r g b) = 0b1000 .|. (bit g `shiftL` 2) .|. (bit r `shiftL` 1) .|. bit b
-  where
-    bit 0x00 = 0
-    bit 0xff = 1
 
 toByteMap :: [(Word8, Word8)] -> BS.ByteString
 toByteMap vals = BS.pack [ fromMaybe 0 val | addr <- [0..255], let val = lookup addr vals ]

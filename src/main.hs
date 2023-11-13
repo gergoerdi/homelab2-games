@@ -10,24 +10,65 @@ import qualified TVC.Hello
 
 import Z80
 import Z80.Utils
+import TVC
+import TVC.Hello.RatkaiPicture -- XXX
+
 import qualified Data.ByteString as BS
 import System.FilePath
 import System.Directory
-import Codec.Picture
 import Text.Printf
 import Data.Word
+import Data.List.Split (chunksOf)
+import Data.Array (Array, (!), listArray)
+import Data.Bits
 
 main :: IO ()
 main = do
     charSet <- BS.readFile "/home/cactus/prog/retro/homelab/ratkai/_obj/charset.bin"
+    bs <- BS.drop 2 <$> BS.readFile "/home/cactus/prog/c64/bosszu-disasm/ram.mem"
 
     let picNum = 42 :: Word8
-    let fileName = "/home/cactus/prog/c64/bosszu-disasm/pics/ep128" </> printf "ram.mem-%02d" picNum <.> "png"
-    pic <- readImage fileName >>= \case
-        Right pic -> pure $ convertRGB8 pic
-        Left err -> error err
+    emit "_build/hello" $ TVC.Hello.hello charSet (picData picNum bs)
 
-    emit "_build/hello" $ TVC.Hello.hello charSet pic
+picData :: Word8 -> BS.ByteString -> BS.ByteString
+picData i bs = BS.pack $ map toTVCColor . chunksOf 2 $ hiresPixels colors bitmap
+  where
+    bitmapAddr = 0xa000 + fromIntegral (i - 1) * 450
+    colorsAddr = bitmapAddr + 0x190
+    bitmap = BS.drop bitmapAddr bs
+    colors = BS.drop colorsAddr bs
+
+    toTVCColor :: [Word8] -> Word8
+    toTVCColor [p1, p2] = interleave (tvcPalette ! p1) (tvcPalette ! p2)
+
+    tvcPalette :: Array Word8 Word8
+    tvcPalette = listArray (0, 15) . map toLGRB $
+        [ (False, False, False, False)
+        , (True,  True,  True,  True)
+        , (True,  True,  False, True)
+        , (True,  False, True,  True)
+        , (False, True,  False, True)
+        , (True,  False, True,  False)
+        , (True,  False, False, True)
+        , (True,  True,  True,  False)
+        , (False, True,  True,  False)
+        , (False, True,  False, False)
+        , (True,  True,  False, False)
+        , (False, True,  True,  False)
+        , (False, True,  True,  True)
+        , (False, True,  True,  False)
+        , (False, False, True,  True)
+        , (True,  True,  True,  True)
+        ]
+
+    toLGRB :: (Bool, Bool, Bool, Bool) -> Word8
+    toLGRB (l, r, g, b) =
+      (if l then 0b1000 else 0b0000) .|.
+      (if g then 0b0100 else 0b0000) .|.
+      (if r then 0b0010 else 0b0000) .|.
+      (if b then 0b0001 else 0b0000)
+
+
 
 emit :: String -> Z80ASM -> IO ()
 emit name prog = do

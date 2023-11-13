@@ -12,9 +12,9 @@ dependencies:
   - bytestring
   - filepath
   - directory
-  - JuicyPixels
   - lens
   - split
+  - array
 
 source-dirs:
   - src
