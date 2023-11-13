@@ -123,7 +123,7 @@ hello charset pic = mdo
         out [0x02] A
         ret
 
-    -- Pre: HL is the start of the 80x40 pixel picture data
+    -- Pre: HL is the start of the picture data (colormap <> bitmap)
     -- Pre: A is the background color
     displayPicture <- labelled do
         push AF
@@ -148,21 +148,101 @@ hello charset pic = mdo
                 unlessFlag NC $ inc D
 
         -- Draw picture
-        ld DE $ videoStart + (8 * 64) + ((64 - 40) `div` 2)
-        decLoopB 40 do
+        -- IX: pointer to colormap
+        -- HL: pointer to bitmap
+        -- IY: pointer to video memory
+        push HL
+        pop IX
+        ld DE $ picWidth `div` 8 * picHeight `div` 8
+        add HL DE
+        ld IY $ videoStart + (8 * 64) + ((64 - 40) `div` 2)
+        decLoopB (picHeight `div` 8) do
             push BC
+            decLoopB 8 do -- 4 double scanlines per colormap row
+                push BC
+                push IX
 
-            push HL
-            ld BC 40
-            ldir
-            nextRow
-            pop HL
-            ld BC 40
-            ldir
-            nextRow
+                ld E 2 -- Double scanline counter
+                push HL
+                push IX
+                withLabel \loop -> do
+                    decLoopB (picWidth `div` 8) do -- One scanline
+                        push BC
+                        ld A [HL]
+                        decLoopB 4 do -- 4 * 2 bits per byte
+                            push BC
+
+                            -- Shift out even bit's color into C
+                            call shiftOutPixel
+                            ld C A
+
+                            ld A B
+                            -- Shift out odd bit's color into D
+                            call shiftOutPixel
+                            ld D A
+
+                            -- Combine C and D into A
+                            ld A C
+                            rla
+                            Z80.or D
+
+                            ld [IY] A
+                            inc IY
+
+                            -- Restore A to get ready for next two bits
+                            ld A B
+
+                            pop BC
+                        inc HL
+                        inc IX
+
+                        pop BC
+
+                    push DE
+                    ld DE (64 - picWidth `div` 2)
+                    add IY DE
+                    pop DE
+
+                    dec E
+                    unlessFlag Z do
+                        pop IX
+                        pop HL
+                        jp loop
+
+                pop IX
+                pop BC
+
+            ld DE (picWidth `div` 8)
+            add IX DE
 
             pop BC
+
         jp pageVideoOut
+
+    shiftOutPixel <- labelled do
+        -- Shift out bit, use it as an index into colormap's two nybbles
+        rla
+        ld B A
+        ld A [IX]
+        unlessFlag NC do
+            replicateM_ 4 rra
+        Z80.and 0x0f
+
+        -- Spread out A's value using the lookup table `spreads`
+        push DE
+        ld DE spreads
+        add A E
+        ld E A
+        unlessFlag NC $ inc D
+        ld A [DE]
+        pop DE
+        ret
+
+        -- ld A 0b01_01_01_01
+        -- ret C
+        -- ld A 0b00_00_00_00
+        -- ret
+
 
     let setupLineInt y = do
             let (lo, hi) = wordBytes $ y * 16 {-+ 63-} -- - 46
@@ -622,6 +702,7 @@ hello charset pic = mdo
     keyData <- labelled $ db $ toByteMap keymap
     charsetData <- labelled $ db charset
     picData <- labelled $ db pic
+    spreads <- labelled $ db [spread x | x <- [0..15]]
 
     kbdPrevState <- labelled $ db $ replicate 10 0x00
     kbdState <- labelled $ db $ replicate 10 0x00
@@ -708,3 +789,9 @@ tvcChar = \case
     '_' -> 0x6f
     c | isLower c -> fromIntegral (ord c) - 0x60
       | otherwise -> fromIntegral (ord c)
+
+picWidth :: (Num a) => a
+picWidth = 80
+
+picHeight :: (Num a) => a
+picHeight = 40

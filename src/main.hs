@@ -10,15 +10,11 @@ import qualified TVC.Hello
 
 import Z80
 import Z80.Utils
-import TVC
-import TVC.Hello.RatkaiPicture -- XXX
 
 import qualified Data.ByteString as BS
 import System.FilePath
 import System.Directory
-import Text.Printf
 import Data.Word
-import Data.List.Split (chunksOf)
 import Data.Array (Array, (!), listArray)
 import Data.Bits
 
@@ -27,19 +23,39 @@ main = do
     charSet <- BS.readFile "/home/cactus/prog/retro/homelab/ratkai/_obj/charset.bin"
     bs <- BS.drop 2 <$> BS.readFile "/home/cactus/prog/c64/bosszu-disasm/ram.mem"
 
-    let picNum = 42 :: Word8
+    let picNum = 42
+    -- let picNum = 1
     emit "_build/hello" $ TVC.Hello.hello charSet (picData picNum bs)
 
-picData :: Word8 -> BS.ByteString -> BS.ByteString
-picData i bs = BS.pack $ map toTVCColor . chunksOf 2 $ hiresPixels colors bitmap
-  where
-    bitmapAddr = 0xa000 + fromIntegral (i - 1) * 450
-    colorsAddr = bitmapAddr + 0x190
-    bitmap = BS.drop bitmapAddr bs
-    colors = BS.drop colorsAddr bs
+picWidth :: (Num a) => a
+picWidth = 80
 
-    toTVCColor :: [Word8] -> Word8
-    toTVCColor [p1, p2] = interleave (tvcPalette ! p1) (tvcPalette ! p2)
+picHeight :: (Num a) => a
+picHeight = 40
+
+reorder :: Int -> Int -> Int -> [a] -> [a]
+reorder stride w h xs = map (xs!!) $
+    [ (stride * y0) + (x * 8 + y)
+    | y0 <- [0 .. (h `div` 8) - 1]
+    , y <- [0..7]
+    , x <- [0..(w `div` 8) -1]
+    ]
+
+picData :: Word8 -> BS.ByteString -> BS.ByteString
+picData i bs = colormap' <> reorder' bitmap
+  where
+    reorder' = BS.pack . reorder picWidth picWidth picHeight . BS.unpack
+
+    size = picHeight * (picWidth `div` 8)
+    bitmapAddr = 0xa000 + fromIntegral (i - 1) * (size + size `div` 8)
+    colormapAddr = bitmapAddr + size
+    bitmap = BS.take size . BS.drop bitmapAddr $ bs
+    colormap = BS.take (size `div` 8) . BS.drop colormapAddr $ bs
+
+    colormap' = BS.map toTVCColor colormap
+
+    toTVCColor :: Word8 -> Word8
+    toTVCColor = fromNybbles . both (tvcPalette !) . nybbles
 
     tvcPalette :: Array Word8 Word8
     tvcPalette = listArray (0, 15) . map toLGRB $
@@ -124,3 +140,15 @@ cas mainBlock = mconcat
     word w = BS.pack [lo, hi]
       where
         (lo, hi) = wordBytes w
+
+both :: (a -> b) -> (a, a) -> (b, b)
+both f (x, y) = (f x, f y)
+
+nybbles :: Word8 -> (Word8, Word8)
+nybbles b = both (.&. 0x0f) (n1, n0)
+  where
+    n1 = b `shiftR` 4
+    n0 = b `shiftR` 0
+
+fromNybbles :: (Word8, Word8) -> Word8
+fromNybbles (n1, n0) = (n1 `shiftL` 4) .|. (n0 `shiftL` 0)
