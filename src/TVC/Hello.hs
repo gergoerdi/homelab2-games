@@ -11,7 +11,7 @@ import Data.Bits (shiftL, (.|.), (.&.))
 import Control.Lens (toListOf)
 import Data.List (intercalate)
 import Data.List.Split (chunksOf)
-import Data.Char (ord, isLower)
+import Data.Char (ord, isLower, toUpper)
 import qualified Data.ByteString as BS
 import Data.Maybe (fromMaybe)
 
@@ -640,7 +640,7 @@ toByteMap :: [(Word8, Word8)] -> BS.ByteString
 toByteMap vals = BS.pack [ fromMaybe 0 val | addr <- [0..255], let val = lookup addr vals ]
 
 keymap :: [(Word8, Word8)]
-keymap = map (tvcChar <$>)
+keymap = map (tvcChar . toUpper <$>)
     [ (0x06, '1')
     , (0x02, '2')
     , (0x01, '3')
