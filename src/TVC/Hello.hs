@@ -19,7 +19,7 @@ bufRows :: Word16
 bufRows = 14
 
 charsPerRow :: Word8
-charsPerRow = 32
+charsPerRow = 31
 
 firstLine :: Word8
 firstLine = 12
@@ -487,6 +487,7 @@ hello charset pic = mdo
         -- HL += 2 * colNum
         ld A [colNum]
         sla A
+        inc A
         add A L
         unlessFlag NC $ inc H
         ld L A
@@ -595,8 +596,8 @@ hello charset pic = mdo
     str <- labelled $ db $ (<> [0xff]) $ map tvcChar $ intercalate "\n"
       [ "Egy barátságos kis szobában"
       , "vagy. Egy fiatal srác ül egy"
-      , "C64-es előtt. Hirtelen hátra-"
-      , "fordul és beszélni kezd:"
+      , "TVC előtt. Hirtelen hátrafordul"
+      , "és beszélni kezd:"
       ]
       -- [ "Visszanyeri az eszméletét és"
       -- , "halkan beszélni kezd: Szörnyű"
