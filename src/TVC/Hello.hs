@@ -65,7 +65,7 @@ hello charset pic = mdo
     -- Clear screen
     syscall 0x05
 
-    -- -- Set border color
+    -- Set border color
     ld A 0b00_00_10_00
     out [0x00] A
 
@@ -105,6 +105,15 @@ hello charset pic = mdo
         call inputLine
         call newLine
         call newLine
+
+        -- -- Set border color
+        -- ld A 0b00_00_10_00
+        -- out [0x00] A
+
+        -- ld HL picData
+        -- ld A 0b00_11_11_00
+        -- call displayPicture
+
         ld HL str2
         call printStr
         call newLine

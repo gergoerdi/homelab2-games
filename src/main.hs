@@ -42,15 +42,16 @@ reorder stride w h xs = map (xs!!) $
     ]
 
 picData :: Word8 -> BS.ByteString -> BS.ByteString
-picData i bs = colormap' <> reorder' bitmap
+picData picNum bs = colormap' <> reorder' bitmap
   where
     reorder' = BS.pack . reorder picWidth picWidth picHeight . BS.unpack
 
     size = picHeight * (picWidth `div` 8)
-    bitmapAddr = 0xa000 + fromIntegral (i - 1) * (size + size `div` 8)
+    colorSize = size `div` 8
+    bitmapAddr = 0xa000 + fromIntegral (picNum - 1) * (size + colorSize)
     colormapAddr = bitmapAddr + size
     bitmap = BS.take size . BS.drop bitmapAddr $ bs
-    colormap = BS.take (size `div` 8) . BS.drop colormapAddr $ bs
+    colormap = BS.take colorSize . BS.drop colormapAddr $ bs
 
     colormap' = BS.map toTVCColor colormap
 
@@ -58,28 +59,28 @@ picData i bs = colormap' <> reorder' bitmap
     toTVCColor = fromNybbles . both (tvcPalette !) . nybbles
 
     tvcPalette :: Array Word8 Word8
-    tvcPalette = listArray (0, 15) . map toLGRB $
+    tvcPalette = listArray (0, 15) . map toIGRB $
         [ (False, False, False, False)
         , (True,  True,  True,  True)
-        , (True,  True,  False, True)
         , (True,  False, True,  True)
-        , (False, True,  False, True)
+        , (False, True,  True,  True)
         , (True,  False, True,  False)
+        , (False, True,  False, True)
+        , (False, False, True,  True)
+        , (True,  True,  False, True)
+        , (True,  True,  False, False)
+        , (True,  False, False, False)
         , (True,  False, False, True)
+        , (True,  True,  False, False)
         , (True,  True,  True,  False)
-        , (False, True,  True,  False)
-        , (False, True,  False, False)
         , (True,  True,  False, False)
         , (False, True,  True,  False)
-        , (False, True,  True,  True)
-        , (False, True,  True,  False)
-        , (False, False, True,  True)
         , (True,  True,  True,  True)
         ]
 
-    toLGRB :: (Bool, Bool, Bool, Bool) -> Word8
-    toLGRB (l, r, g, b) =
-      (if l then 0b1000 else 0b0000) .|.
+    toIGRB :: (Bool, Bool, Bool, Bool) -> Word8
+    toIGRB (r, g, b, i) =
+      (if i then 0b1000 else 0b0000) .|.
       (if g then 0b0100 else 0b0000) .|.
       (if r then 0b0010 else 0b0000) .|.
       (if b then 0b0001 else 0b0000)
