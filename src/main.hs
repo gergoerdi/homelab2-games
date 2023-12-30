@@ -26,7 +26,9 @@ main = do
     emit "_build/snake" $ org 20000 Snake.game
     emit "_build/hl2048" $ org 20000 HL2048.game
     -- emit "_build/trafficjam" $ org 20000 TrafficJam.game
-    emit "_build/chip80" $ org 20000 Chip80.game
+
+    image <- BS.readFile "/home/cactus/prog/rust/chirp8-sdl/hidden.ch8"
+    emit "_build/chip80" $ org 20000 $ Chip80.game image
 
 emit :: String -> ASMBlock -> IO ()
 emit name block = do
