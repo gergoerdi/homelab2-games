@@ -3,6 +3,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 module Snake.Main (game) where
 
+import LFSR
 import Snake
 import Snake.Transitions
 
@@ -219,25 +220,6 @@ placeFruit MkLocs{..} = loopForever do
     ld H A
     call isInBoundsF
     ret NZ
-
--- | An 10-bit maximal LFSR
--- | Pre: `DE` is the current state
--- | Post: `DE` is the new state
--- | Clobbers: `A`
-lfsr10 :: Z80ASM
-lfsr10 = do
-    srl D
-    ld A E
-    rra
-    ld E A
-    skippable \skip -> do
-        jp NC skip
-        Z80.xor 0x04
-        ld E A
-        ld A 0x02
-        Z80.xor D
-        ld D A
-    ret
 
 randomize :: Locations -> Z80ASM
 randomize MkLocs{..} = do
