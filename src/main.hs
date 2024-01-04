@@ -6,7 +6,7 @@ import qualified Tetris.Main as Tetris
 import qualified Snake.Main as Snake
 import qualified HL2048.Main as HL2048
 import qualified TrafficJam.Main as TrafficJam
-import qualified Chip80.Main as Chip80
+import qualified CHIP80.Main as Chip80
 
 import Z80
 import Z80.Utils
