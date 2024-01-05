@@ -6,10 +6,12 @@ import qualified Tetris.Main as Tetris
 import qualified Snake.Main as Snake
 import qualified HL2048.Main as HL2048
 import qualified TrafficJam.Main as TrafficJam
-import qualified CHIP80.Main as Chip80
+import qualified CHIP80.Main as CHIP80
 
 import Z80
 import Z80.Utils
+import Z80.ZX0.Compress
+
 import Data.Word
 import qualified Data.ByteString as BS
 import Control.Monad
@@ -28,7 +30,13 @@ main = do
     -- emit "_build/trafficjam" $ org 20000 TrafficJam.game
 
     image <- BS.readFile "/home/cactus/prog/rust/chirp8-sdl/hidden.ch8"
-    emit "_build/chip80" $ org 20000 $ Chip80.game image
+    (image', _) <- compressForward image
+    printf "%d -> %d\n" (BS.length image) (BS.length image')
+
+    emit "_build/chip80" $ org 20000 $ mdo
+        CHIP80.game compressedProg
+        compressedProg <- labelled $ db image'
+        pure ()
 
 emit :: String -> ASMBlock -> IO ()
 emit name block = do
