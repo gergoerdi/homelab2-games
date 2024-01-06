@@ -29,18 +29,12 @@ main = do
     emit "_build/hl2048" $ org 20000 HL2048.game
     -- emit "_build/trafficjam" $ org 20000 TrafficJam.game
 
-    image <- BS.readFile "/home/cactus/prog/rust/chirp8-sdl/hidden.ch8"
-    (image', _) <- compressForward image
-    printf "%d -> %d\n" (BS.length image) (BS.length image')
+    do
+        image <- BS.readFile "/home/cactus/prog/rust/chirp8-sdl/hidden.ch8"
+    -- image <- BS.readFile "/home/cactus/prog/rust/chirp8-sdl/test-roms/6-keypad.ch8"
 
-    emit "_build/chip80" $ org 20000 $ mdo
-        let baseAddr = 0x7000
-        ld SP $ baseAddr - (256 + 16) - 1
-
-        ld IX compressedProg
-        CHIP80.game baseAddr
-        compressedProg <- labelled $ db image'
-        pure ()
+        (image', _) <- compressForward image
+        emit "_build/chip80" $ org 20000 $ CHIP80.game image'
 
 emit :: String -> ASMBlock -> IO ()
 emit name block = do
