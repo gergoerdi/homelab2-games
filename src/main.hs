@@ -6,7 +6,6 @@ import qualified Tetris.Main as Tetris
 import qualified Snake.Main as Snake
 import qualified HL2048.Main as HL2048
 import qualified TrafficJam.Main as TrafficJam
-import qualified CHIP80.Main as CHIP80
 
 import Z80
 import Z80.Utils
@@ -28,7 +27,6 @@ main = do
     emit "_build/snake" $ org 20000 Snake.game
     emit "_build/hl2048" $ org 20000 HL2048.game
     -- emit "_build/trafficjam" $ org 20000 TrafficJam.game
-    emit "_build/chip80" =<< org 16700 <$> CHIP80.withGamesFrom "data/chip80"
 
 emit :: String -> ASMBlock -> IO ()
 emit name block = do
