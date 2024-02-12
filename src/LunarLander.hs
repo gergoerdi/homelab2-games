@@ -28,11 +28,12 @@ game = mdo
             inc [HL]
 
             call clearLander
+            call drawTerrain
 
-            -- Apply gravity every second frame
+            -- Apply gravity on every 4th frame
             ld A [frame]
-            Z80.and 0x01
-            unlessFlag Z do
+            Z80.and 0x03
+            unlessFlag NZ do
                 ld HL [landerVY]
                 ld DE 0x00_01
                 add HL DE
@@ -76,7 +77,7 @@ game = mdo
         platformCols :: Integral a => a
         platformCols = rowstride `div` platformWidth
 
-    terrain <- labelled $ db $ replicate platformCols 0
+    terrain <- labelled $ db $ replicate rowstride 0
 
     lfsr <- labelled lfsr10
 
@@ -88,19 +89,22 @@ game = mdo
             ld A E
             Z80.and 0x07
             Z80.or 0x18
-            ld [HL] A
-            inc HL
+            ld C B
+            decLoopB platformWidth do
+                ld [HL] A
+                inc HL
+            ld B C
         ret
 
     drawTerrain <- labelled do
         ld IY terrain
         ld IX $ videoStart + ((rowstride `mod` platformWidth) `div` 2)
-        decLoopB platformCols do
+        decLoopB (platformCols * platformWidth) do
             push IX
             pop HL
-            ld DE platformWidth
-            add IX DE
+            inc IX
 
+            -- Calculate into HL the start (topmost pixel) of the given terrain
             ld D 0
             ldVia A E [IY]
             inc IY
@@ -109,13 +113,11 @@ game = mdo
                 rl D
             add HL DE
 
+            ld DE rowstride
             push BC
             withLabel \loop -> do
                 ld A 0xff
-                decLoopB platformWidth do
-                    ld [HL] A
-                    inc HL
-                ld DE $ rowstride - platformWidth
+                ld [HL] A
                 add HL DE
                 ld A H
                 cp 0x00
@@ -157,6 +159,27 @@ game = mdo
             -- ld DE 0
             -- ld [landerVY] DE
 
+        -- Clamp bottom
+        ld IX terrain
+        ld D 0
+        ldVia A E [landerX  + 1]
+
+        -- -- Multiply A by platformWidth. TODO: this is currently hardcoded to 6...
+        -- sla A
+        -- ld E A
+        -- sla A
+        -- add A E
+
+        -- ld D 0
+        -- ld E A
+        add IX DE
+        ld A [IX]
+        sub 4
+        -- ld A 20
+        cp H
+        unlessFlag NC do
+            ld H A
+
         ld [landerY] HL
         ret
 
@@ -167,7 +190,7 @@ game = mdo
                 rra
                 jp C notThis
                 body
-                -- ret
+                ret
 
         let setPic2 pic1 pic2 = do
                 skippable \end -> do
@@ -188,9 +211,7 @@ game = mdo
             setPic2 landerPicDown1 landerPicDown2
 
         checkKey do -- Up
-            ld DE 0x00_02
-            add HL DE
-            ld [landerVY] HL
+            pure ()
 
         ld HL [landerVX]
         checkKey do -- Right
@@ -232,11 +253,10 @@ game = mdo
         decLoopB 5 do
             ld C B
             decLoopB 5 do
-                -- ld A [IX]
-                -- Z80.and A
-                -- unlessFlag Z $ ld [HL] A
-                ldVia A [HL] [IX]
+                ld A [IX]
                 inc IX
+                Z80.and A
+                unlessFlag Z $ ld [HL] A
                 inc HL
             add HL DE
             ld B C
