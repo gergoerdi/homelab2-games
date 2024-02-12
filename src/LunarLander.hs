@@ -70,11 +70,36 @@ game = mdo
         ld HL [landerX]
         ld DE [landerVX]
         add HL DE
+
+        -- Clamp left-hand side
+        ld A H
+        cp 180
+        unlessFlag C do
+            ld H 0
+            -- ld DE 0
+            -- ld [landerVX] DE
+
+        -- Clamp right-hand side
+        ld A H
+        cp (64 - 5)
+        unlessFlag C do
+            -- ld DE 0
+            -- ld [landerVX] DE
+            ld H (64 - 5)
         ld [landerX] HL
 
         ld HL [landerY]
         ld DE [landerVY]
         add HL DE
+
+        -- Clamp top
+        ld A H
+        cp 180
+        unlessFlag C do
+            ld H 0
+            -- ld DE 0
+            -- ld [landerVY] DE
+
         ld [landerY] HL
         ret
 
