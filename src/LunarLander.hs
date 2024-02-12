@@ -4,7 +4,8 @@ import Z80
 import Z80.Utils
 import Z80.Machine.HomeLab.HL34
 import Data.Word
-import Control.Monad (forM_)
+import Control.Monad (forM_, replicateM_)
+import LFSR
 
 game :: Z80ASM
 game = mdo
@@ -17,38 +18,42 @@ game = mdo
             ld [IX] L
             ld [IX + 1] H
 
-    call clearScreen
     loopForever do
-        ld HL frame
-        inc [HL]
+        call clearScreen
+        call initTerrain
+        call drawTerrain
 
-        call clearLander
+        loopForever do
+            ld HL frame
+            inc [HL]
 
-        -- Apply gravity every second frame
-        ld A [frame]
-        Z80.and 0x01
-        unlessFlag Z do
-            ld HL [landerVY]
-            ld DE 0x00_01
-            add HL DE
-            ld [landerVY] HL
+            call clearLander
 
-        setPic landerPicIdle
-        call scanKeys
-        call moveLander
-        call drawLander
+            -- Apply gravity every second frame
+            ld A [frame]
+            Z80.and 0x01
+            unlessFlag Z do
+                ld HL [landerVY]
+                ld DE 0x00_01
+                add HL DE
+                ld [landerVY] HL
 
-        -- Wait for end vblank
-        withLabel \waitFrame1 -> do
-            ld A [0xe802]
-            Z80.bit 0 A
-            jp NZ waitFrame1
+            setPic landerPicIdle
+            call scanKeys
+            call moveLander
+            call drawLander
 
-        -- Wait for start of vblank
-        withLabel \waitFrame2 -> do
-            ld A [0xe802]
-            Z80.bit 0 A
-            jp Z waitFrame2
+            -- Wait for end vblank
+            withLabel \waitFrame1 -> do
+                ld A [0xe802]
+                Z80.bit 0 A
+                jp NZ waitFrame1
+
+            -- Wait for start of vblank
+            withLabel \waitFrame2 -> do
+                ld A [0xe802]
+                Z80.bit 0 A
+                jp Z waitFrame2
 
     clearScreen <- labelled clearScreen_
     frame <- labelled $ db [0]
@@ -65,6 +70,73 @@ game = mdo
     landerPicLeft1 <-  labelled $ db $ concat landerLeft1
     landerPicLeft2 <- labelled $ db $ concat landerLeft2
     landerPic <- labelled $ dw [landerPicIdle]
+
+    let platformWidth :: Num a => a
+        platformWidth = 4
+
+    terrain <- labelled $ db $ replicate rowstride 0
+
+    lfsr <- labelled lfsr10
+
+    initTerrain <- labelled do
+        ld DE 0x01 -- TODO: persist this between runs
+        ld HL terrain
+        decLoopB (rowstride `div` platformWidth) do
+            call lfsr
+            ld A E
+            Z80.and 0x0f
+            inc A
+            ld [HL] A
+            inc HL
+        ret
+
+    drawTerrain <- labelled do
+        ld IY terrain
+        ld IX $ videoStart + rowstride * (numLines - 1)
+        ld DE 0x01
+        decLoopB (rowstride `div` platformWidth) mdo
+            push IX
+            pop HL
+            replicateM_ platformWidth $ inc IX
+
+            push BC
+            ldVia A B [IY]
+            inc IY
+
+            withLabel \loop -> do
+                -- Ensure flat top for top element
+                ld A B
+                cp 0
+                jp Z flatTop
+
+                ld C B
+                decLoopB platformWidth do
+                    call lfsr
+                    ld A E
+                    Z80.and 0x3f
+                    Z80.or 0xc0
+                    ld [HL] A
+                    inc HL
+                ld B C
+                push DE
+                ld DE $ negate $ rowstride + platformWidth
+                add HL DE
+                pop DE
+                dec B
+                jp loop
+
+            flatTop <- labelled do
+                decLoopB platformWidth do
+                    call lfsr
+                    ld A E
+                    Z80.and 0x07
+                    replicateM_ 2 $ sla A
+                    Z80.or 0xc3
+                    ld [HL] A
+                    inc HL
+
+            pop BC
+        ret
 
     moveLander <- labelled do
         ld HL [landerX]
@@ -270,4 +342,22 @@ landerLeft2 =
     , [ 0x00, 0x14, 0x14, 0x14, 0x00 ]
     , [ 0x18, 0x1e, 0x00, 0x1d, 0x15 ]
     , [ 0x00, 0x00, 0x00, 0x00, 0x00 ]
+    ]
+
+landerDownRight1 :: [[Word8]]
+landerDownRight1 =
+    [ [ 0x00, 0x1a, 0x12, 0x1e, 0x1e ]
+    , [ 0x00, 0xea, 0x14, 0xd5, 0x19 ]
+    , [ 0x00, 0x14, 0x14, 0x14, 0x00 ]
+    , [ 0x18, 0x1e, 0xd9, 0x1d, 0x15 ]
+    , [ 0x00, 0xe6, 0xe6, 0xe6, 0x00 ]
+    ]
+
+landerDownRight2 :: [[Word8]]
+landerDownRight2 =
+    [ [ 0x00, 0x1a, 0x12, 0x1e, 0x1d ]
+    , [ 0x00, 0xea, 0x14, 0xd5, 0x1a ]
+    , [ 0x00, 0x14, 0x14, 0x14, 0x00 ]
+    , [ 0x18, 0x1e, 0xe6, 0x1d, 0x15 ]
+    , [ 0x00, 0xd9, 0xd9, 0xd9, 0x00 ]
     ]
