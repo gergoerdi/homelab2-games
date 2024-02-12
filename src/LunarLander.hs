@@ -111,10 +111,11 @@ game = mdo
 
                 ld C B
                 decLoopB platformWidth do
-                    call lfsr
-                    ld A E
-                    Z80.and 0x3f
-                    Z80.or 0xc0
+                    -- call lfsr
+                    -- ld A E
+                    -- Z80.and 0x3f
+                    -- Z80.or 0xc0
+                    ld A 0xff
                     ld [HL] A
                     inc HL
                 ld B C
@@ -127,11 +128,12 @@ game = mdo
 
             flatTop <- labelled do
                 decLoopB platformWidth do
-                    call lfsr
-                    ld A E
-                    Z80.and 0x07
-                    replicateM_ 2 $ sla A
-                    Z80.or 0xc3
+                    -- call lfsr
+                    -- ld A E
+                    -- Z80.and 0x07
+                    -- replicateM_ 2 $ sla A
+                    -- Z80.or 0xc3
+                    ld A 0xff
                     ld [HL] A
                     inc HL
 
