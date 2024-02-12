@@ -10,6 +10,7 @@ import qualified TrafficJam.Main as TrafficJam
 import Z80
 import Z80.Utils
 import Z80.ZX0.Compress
+import Z80.Machine.HomeLab.HTP
 
 import Data.Word
 import qualified Data.ByteString as BS
@@ -23,44 +24,16 @@ import System.Directory
 
 main :: IO ()
 main = do
-    emit "_build/tetris" $ org 20000 Tetris.game
-    emit "_build/snake" $ org 20000 Snake.game
-    emit "_build/hl2048" $ org 20000 HL2048.game
+    emit2 "_build/tetris" $ org 20000 Tetris.game
+    emit2 "_build/snake" $ org 20000 Snake.game
+    emit2 "_build/hl2048" $ org 20000 HL2048.game
     -- emit "_build/trafficjam" $ org 20000 TrafficJam.game
 
-emit :: String -> ASMBlock -> IO ()
-emit name block = do
+emit2 :: String -> ASMBlock -> IO ()
+emit2 name block = do
     createDirectoryIfMissing True (takeDirectory name)
     BS.writeFile (name <.> "obj") $ asmData block
-    BS.writeFile (name <.> "htp") $ htp (fromString $ takeBaseName name) block
-
-htp :: BS.ByteString -> ASMBlock -> BS.ByteString
-htp label mainBlock = mconcat
-    [ leader
-    , record label $ org 0x4002 do
-            dw [asmOrg mainBlock]
-    , BS.singleton 0x01
-    , leader
-    , record mempty mainBlock
-    , BS.singleton 0x00
-    ]
-  where
-    leader = BS.replicate 100 0x00
-
-    record label block = mconcat
-        [ BS.singleton 0xa5
-        , label
-        , BS.singleton 0x00
-        , word $ asmOrg block
-        , word . fromIntegral $ BS.length bs
-        , bs
-        , crc bs
-        ]
-      where
-        bs = asmData block
-
-    crc = BS.singleton . BS.foldr' (+) 0
-
-    word w = BS.pack [lo, hi]
-      where
-        (lo, hi) = wordBytes w
+    BS.writeFile (name <.> "htp") $ htp (fromString $ takeBaseName name)
+      [ block
+      , org 0x4002 $ dw [asmOrg block]
+      ]
