@@ -72,71 +72,54 @@ game = mdo
     landerPic <- labelled $ dw [landerPicIdle]
 
     let platformWidth :: Num a => a
-        platformWidth = 4
+        platformWidth = 6
+        platformCols :: Integral a => a
+        platformCols = rowstride `div` platformWidth
 
-    terrain <- labelled $ db $ replicate rowstride 0
+    terrain <- labelled $ db $ replicate platformCols 0
 
     lfsr <- labelled lfsr10
 
     initTerrain <- labelled do
         ld DE 0x01 -- TODO: persist this between runs
         ld HL terrain
-        decLoopB (rowstride `div` platformWidth) do
+        decLoopB platformCols do
             call lfsr
             ld A E
-            Z80.and 0x0f
-            inc A
+            Z80.and 0x07
+            Z80.or 0x18
             ld [HL] A
             inc HL
         ret
 
     drawTerrain <- labelled do
         ld IY terrain
-        ld IX $ videoStart + rowstride * (numLines - 1)
-        ld DE 0x01
-        decLoopB (rowstride `div` platformWidth) mdo
+        ld IX $ videoStart + ((rowstride `mod` platformWidth) `div` 2)
+        decLoopB platformCols do
             push IX
             pop HL
-            replicateM_ platformWidth $ inc IX
+            ld DE platformWidth
+            add IX DE
+
+            ld D 0
+            ldVia A E [IY]
+            inc IY
+            replicateM_ 6 do
+                sla E
+                rl D
+            add HL DE
 
             push BC
-            ldVia A B [IY]
-            inc IY
-
             withLabel \loop -> do
-                -- Ensure flat top for top element
-                ld A B
-                cp 0
-                jp Z flatTop
-
-                ld C B
+                ld A 0xff
                 decLoopB platformWidth do
-                    -- call lfsr
-                    -- ld A E
-                    -- Z80.and 0x3f
-                    -- Z80.or 0xc0
-                    ld A 0xff
                     ld [HL] A
                     inc HL
-                ld B C
-                push DE
-                ld DE $ negate $ rowstride + platformWidth
+                ld DE $ rowstride - platformWidth
                 add HL DE
-                pop DE
-                dec B
-                jp loop
-
-            flatTop <- labelled do
-                decLoopB platformWidth do
-                    -- call lfsr
-                    -- ld A E
-                    -- Z80.and 0x07
-                    -- replicateM_ 2 $ sla A
-                    -- Z80.or 0xc3
-                    ld A 0xff
-                    ld [HL] A
-                    inc HL
-
+                ld A H
+                cp 0x00
+                jp NZ loop
             pop BC
         ret
 
@@ -246,10 +229,12 @@ game = mdo
 
         call landerScreenAddr
         ld DE $ rowstride - 5
-        -- ld IX landerPic
         decLoopB 5 do
             ld C B
             decLoopB 5 do
+                -- ld A [IX]
+                -- Z80.and A
+                -- unlessFlag Z $ ld [HL] A
                 ldVia A [HL] [IX]
                 inc IX
                 inc HL
