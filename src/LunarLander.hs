@@ -12,12 +12,6 @@ game = mdo
     di
     pageIO
 
-    let setPic pic = do
-            ld IX landerPic
-            ld HL pic
-            ld [IX] L
-            ld [IX + 1] H
-
     loopForever do
         call clearScreen
         call initTerrain
@@ -36,7 +30,6 @@ game = mdo
             add HL DE
             ld [landerVY] HL
 
-            setPic landerPicIdle
             call scanKeys
             call moveLander
             call drawLander
@@ -59,15 +52,9 @@ game = mdo
     landerY <- labelled $ dw [4 * 256]
     landerVX <- labelled $ dw [0]
     landerVY <- labelled $ dw [0]
-
-    landerPicIdle <- labelled $ db $ concat landerIdle
-    landerPicDown1 <- labelled $ db $ concat landerDown1
-    landerPicDown2 <- labelled $ db $ concat landerDown2
-    landerPicRight1 <- labelled $ db $ concat landerRight1
-    landerPicRight2 <- labelled $ db $ concat landerRight2
-    landerPicLeft1 <-  labelled $ db $ concat landerLeft1
-    landerPicLeft2 <- labelled $ db $ concat landerLeft2
-    landerPic <- labelled $ dw [landerPicIdle]
+    drawDown <- labelled $ db [0]
+    drawLeft <- labelled $ db [0]
+    drawRight <- labelled $ db [0]
 
     let platformWidth :: Num a => a
         platformWidth = 6
@@ -216,31 +203,27 @@ game = mdo
         ret
 
     scanKeys <- labelled do
+        ld A 0
+        ld [drawDown] A
+        ld [drawLeft] A
+        ld [drawRight] A
+
         ld A [0xe800]
 
         let checkKey body = skippable \notThis -> do
                 rra
                 jp C notThis
                 body
-                ret
-
-        let setPic2 pic1 pic2 = do
-                skippable \end -> do
-                    ld B A
-                    ld A [frame]
-                    Z80.and 0x01
-                    unlessFlag Z do
-                        setPic pic1
-                        jp end
-                    setPic pic2
-                ld A B
+            setDir dir = do
+                ld IX dir
+                dec [IX]
 
         ld HL [landerVY]
         checkKey do -- Down
             ld DE $ negate 0x00_04
             add HL DE
             ld [landerVY] HL
-            setPic2 landerPicDown1 landerPicDown2
+            setDir drawDown
 
         checkKey do -- Up
             pure ()
@@ -250,13 +233,13 @@ game = mdo
             ld DE $ negate 0x00_02
             add HL DE
             ld [landerVX] HL
-            setPic2 landerPicRight1 landerPicRight2
+            setDir drawRight
 
         checkKey do -- Left
             ld DE 0x00_02
             add HL DE
             ld [landerVX] HL
-            setPic2 landerPicLeft1 landerPicLeft2
+            setDir drawLeft
 
         ret
 
@@ -280,12 +263,43 @@ game = mdo
 
         ret
 
+    landerSprite <- labelled $ db $ concat landerSprite_
+    downSprite1 <- labelled $ db $ concat downSprite1_
+    downSprite2 <- labelled $ db $ concat downSprite2_
+    rightSprite1 <- labelled $ db $ concat rightSprite1_
+    rightSprite2 <- labelled $ db $ concat rightSprite2_
+    leftSprite1 <- labelled $ db $ concat leftSprite1_
+    leftSprite2 <- labelled $ db $ concat leftSprite2_
+
     drawLander <- labelled do
-        ld IX landerPic
-        ld L [IX]
-        ld H [IX + 1]
-        push HL
-        pop IX
+        ld IX landerSprite
+        call drawSprite
+
+        let drawSprites sprite1 sprite2 = do
+                ld IX frame
+                Z80.bit 0 [IX]
+                ld IX sprite1
+                unlessFlag Z $ ld IX sprite2
+                call drawSprite
+
+        let drawSpritesIf dir sprite1 sprite2 = do
+                ld A [dir]
+                Z80.and A
+                unlessFlag Z $ drawSprites sprite1 sprite2
+
+        drawSpritesIf drawDown downSprite1 downSprite2
+        drawSpritesIf drawLeft leftSprite1 leftSprite2
+        drawSpritesIf drawRight rightSprite1 rightSprite2
+
+        ret
+
+    -- | Pre: `IX` contains sprite's starting address
+    drawSprite <- labelled do
+        -- ld IX landerPic
+        -- ld L [IX]
+        -- ld H [IX + 1]
+        -- push HL
+        -- pop IX
 
         call landerScreenAddr
         ld DE $ rowstride - 5
@@ -327,8 +341,8 @@ clearScreen_ = do
         ld B C
     ret
 
-landerIdle :: [[Word8]]
-landerIdle =
+landerSprite_ :: [[Word8]]
+landerSprite_ =
     [ [ 0x00, 0x1a, 0x12, 0x1e, 0x00 ]
     , [ 0x00, 0xea, 0x14, 0xd5, 0x00 ]
     , [ 0x00, 0x14, 0x14, 0x14, 0x00 ]
@@ -336,74 +350,56 @@ landerIdle =
     , [ 0x00, 0x00, 0x00, 0x00, 0x00 ]
     ]
 
-landerDown1 :: [[Word8]]
-landerDown1 =
-    [ [ 0x00, 0x1a, 0x12, 0x1e, 0x00 ]
-    , [ 0x00, 0xea, 0x14, 0xd5, 0x00 ]
-    , [ 0x00, 0x14, 0x14, 0x14, 0x00 ]
-    , [ 0x18, 0x1e, 0xd9, 0x1d, 0x15 ]
+downSprite1_ :: [[Word8]]
+downSprite1_ =
+    [ [ 0x00, 0x00, 0x00, 0x00, 0x00 ]
+    , [ 0x00, 0x00, 0x00, 0x00, 0x00 ]
+    , [ 0x00, 0x00, 0x00, 0x00, 0x00 ]
+    , [ 0x00, 0x00, 0xd9, 0x00, 0x00 ]
     , [ 0x00, 0xe6, 0xe6, 0xe6, 0x00 ]
     ]
 
-landerDown2 :: [[Word8]]
-landerDown2 =
-    [ [ 0x00, 0x1a, 0x12, 0x1e, 0x00 ]
-    , [ 0x00, 0xea, 0x14, 0xd5, 0x00 ]
-    , [ 0x00, 0x14, 0x14, 0x14, 0x00 ]
-    , [ 0x18, 0x1e, 0xe6, 0x1d, 0x15 ]
+downSprite2_ :: [[Word8]]
+downSprite2_ =
+    [ [ 0x00, 0x00, 0x00, 0x00, 0x00 ]
+    , [ 0x00, 0x00, 0x00, 0xd5, 0x00 ]
+    , [ 0x00, 0x00, 0x00, 0x00, 0x00 ]
+    , [ 0x00, 0x00, 0xe6, 0x00, 0x00 ]
     , [ 0x00, 0xd9, 0xd9, 0xd9, 0x00 ]
     ]
 
-landerRight1 :: [[Word8]]
-landerRight1 =
-    [ [ 0x00, 0x1a, 0x12, 0x1e, 0x1e ]
-    , [ 0x00, 0xea, 0x14, 0xd5, 0x19 ]
-    , [ 0x00, 0x14, 0x14, 0x14, 0x00 ]
-    , [ 0x18, 0x1e, 0x00, 0x1d, 0x15 ]
+rightSprite1_ :: [[Word8]]
+rightSprite1_ =
+    [ [ 0x00, 0x00, 0x00, 0x00, 0x1e ]
+    , [ 0x00, 0x00, 0x00, 0x00, 0x19 ]
+    , [ 0x00, 0x00, 0x00, 0x00, 0x00 ]
+    , [ 0x00, 0x00, 0x00, 0x00, 0x00 ]
     , [ 0x00, 0x00, 0x00, 0x00, 0x00 ]
     ]
 
-landerRight2 :: [[Word8]]
-landerRight2 =
-    [ [ 0x00, 0x1a, 0x12, 0x1e, 0x1d ]
-    , [ 0x00, 0xea, 0x14, 0xd5, 0x1a ]
-    , [ 0x00, 0x14, 0x14, 0x14, 0x00 ]
-    , [ 0x18, 0x1e, 0x00, 0x1d, 0x15 ]
+rightSprite2_ :: [[Word8]]
+rightSprite2_ =
+    [ [ 0x00, 0x00, 0x00, 0x00, 0x1d ]
+    , [ 0x00, 0x00, 0x00, 0x00, 0x1a ]
+    , [ 0x00, 0x00, 0x00, 0x00, 0x00 ]
+    , [ 0x00, 0x00, 0x00, 0x00, 0x00 ]
     , [ 0x00, 0x00, 0x00, 0x00, 0x00 ]
     ]
 
-landerLeft1 :: [[Word8]]
-landerLeft1 =
-    [ [ 0x1d, 0x1a, 0x12, 0x1e, 0x00 ]
-    , [ 0x1a, 0xea, 0x14, 0xd5, 0x00 ]
-    , [ 0x00, 0x14, 0x14, 0x14, 0x00 ]
-    , [ 0x18, 0x1e, 0x00, 0x1d, 0x15 ]
+leftSprite1_ :: [[Word8]]
+leftSprite1_ =
+    [ [ 0x1d, 0x00, 0x00, 0x00, 0x00 ]
+    , [ 0x1a, 0x00, 0x00, 0x00, 0x00 ]
+    , [ 0x00, 0x00, 0x00, 0x00, 0x00 ]
+    , [ 0x00, 0x00, 0x00, 0x00, 0x00 ]
     , [ 0x00, 0x00, 0x00, 0x00, 0x00 ]
     ]
 
-landerLeft2 :: [[Word8]]
-landerLeft2 =
-    [ [ 0x1e, 0x1a, 0x12, 0x1e, 0x00 ]
-    , [ 0x19, 0xea, 0x14, 0xd5, 0x00 ]
-    , [ 0x00, 0x14, 0x14, 0x14, 0x00 ]
-    , [ 0x18, 0x1e, 0x00, 0x1d, 0x15 ]
+leftSprite2_ :: [[Word8]]
+leftSprite2_ =
+    [ [ 0x1e, 0x00, 0x00, 0x00, 0x00 ]
+    , [ 0x19, 0x00, 0x00, 0x00, 0x00 ]
     , [ 0x00, 0x00, 0x00, 0x00, 0x00 ]
-    ]
-
-landerDownRight1 :: [[Word8]]
-landerDownRight1 =
-    [ [ 0x00, 0x1a, 0x12, 0x1e, 0x1e ]
-    , [ 0x00, 0xea, 0x14, 0xd5, 0x19 ]
-    , [ 0x00, 0x14, 0x14, 0x14, 0x00 ]
-    , [ 0x18, 0x1e, 0xd9, 0x1d, 0x15 ]
-    , [ 0x00, 0xe6, 0xe6, 0xe6, 0x00 ]
-    ]
-
-landerDownRight2 :: [[Word8]]
-landerDownRight2 =
-    [ [ 0x00, 0x1a, 0x12, 0x1e, 0x1d ]
-    , [ 0x00, 0xea, 0x14, 0xd5, 0x1a ]
-    , [ 0x00, 0x14, 0x14, 0x14, 0x00 ]
-    , [ 0x18, 0x1e, 0xe6, 0x1d, 0x15 ]
-    , [ 0x00, 0xd9, 0xd9, 0xd9, 0x00 ]
+    , [ 0x00, 0x00, 0x00, 0x00, 0x00 ]
+    , [ 0x00, 0x00, 0x00, 0x00, 0x00 ]
     ]
