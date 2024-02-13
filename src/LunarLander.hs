@@ -120,6 +120,11 @@ game = mdo
     drawTerrain <- labelled do
         ld IY terrain
         ld IX videoStart
+
+        -- We'll use this to randomize the surface "texture"
+        ld DE 0xffff
+        push DE
+
         decLoopB rowstride do
             push IX
             pop HL
@@ -134,7 +139,18 @@ game = mdo
                 rl D
             add HL DE
 
+            -- Make the surface a bit ragged
+            pop DE
+            call lfsr
+            ld A E
+            Z80.and 0x03
+            Z80.or 0xfc
+            ld [HL] A
+            push DE
+
             ld DE rowstride
+            add HL DE
+
             push BC
             withLabel \loop -> do
                 ld A 0xff
@@ -144,6 +160,8 @@ game = mdo
                 cp 0x00
                 jp NZ loop
             pop BC
+
+        pop DE
         ret
 
     moveLander <- labelled do
