@@ -30,14 +30,11 @@ game = mdo
             call clearLander
             call drawTerrain
 
-            -- Apply gravity on every 4th frame
-            ld A [frame]
-            Z80.and 0x03
-            unlessFlag NZ do
-                ld HL [landerVY]
-                ld DE 0x00_01
-                add HL DE
-                ld [landerVY] HL
+            -- Apply gravity
+            ld HL [landerVY]
+            ld DE 0x00_01
+            add HL DE
+            ld [landerVY] HL
 
             setPic landerPicIdle
             call scanKeys
@@ -59,7 +56,7 @@ game = mdo
     clearScreen <- labelled clearScreen_
     frame <- labelled $ db [0]
     landerX <- labelled $ dw [30 * 256]
-    landerY <- labelled $ dw [1 * 256]
+    landerY <- labelled $ dw [4 * 256]
     landerVX <- labelled $ dw [0]
     landerVY <- labelled $ dw [0]
 
@@ -78,6 +75,7 @@ game = mdo
         platformCols = rowstride `div` platformWidth
 
     terrain <- labelled $ db $ replicate rowstride 0
+    platform <- labelled $ db [0]
 
     lfsr <- labelled lfsr10
 
@@ -132,7 +130,7 @@ game = mdo
 
         -- Clamp left-hand side
         ld A H
-        cp 180
+        cp 128
         unlessFlag C do
             ld H 0
             -- ld DE 0
@@ -140,11 +138,11 @@ game = mdo
 
         -- Clamp right-hand side
         ld A H
-        cp (64 - 5)
+        cp (128 - 5 * 2)
         unlessFlag C do
+            ld H (128 - 5 * 2)
             -- ld DE 0
             -- ld [landerVX] DE
-            ld H (64 - 5)
         ld [landerX] HL
 
         ld HL [landerY]
@@ -160,22 +158,15 @@ game = mdo
             -- ld [landerVY] DE
 
         -- Clamp bottom
-        ld IX terrain
-        ld D 0
-        ldVia A E [landerX  + 1]
-
-        -- -- Multiply A by platformWidth. TODO: this is currently hardcoded to 6...
-        -- sla A
-        -- ld E A
-        -- sla A
-        -- add A E
-
+        -- ld IX terrain
         -- ld D 0
-        -- ld E A
-        add IX DE
-        ld A [IX]
-        sub 4
-        -- ld A 20
+        -- ldVia A E [landerX  + 1]
+        -- replicateM_ 2 $
+        sra E
+        -- add IX DE
+        -- ld A [IX]
+        -- sub 4
+        ld A 80
         cp H
         unlessFlag NC do
             ld H A
@@ -205,7 +196,7 @@ game = mdo
 
         ld HL [landerVY]
         checkKey do -- Down
-            ld DE $ negate 0x00_02
+            ld DE $ negate 0x00_04
             add HL DE
             ld [landerVY] HL
             setPic2 landerPicDown1 landerPicDown2
@@ -215,13 +206,13 @@ game = mdo
 
         ld HL [landerVX]
         checkKey do -- Right
-            ld DE $ negate 0x00_01
+            ld DE $ negate 0x00_02
             add HL DE
             ld [landerVX] HL
             setPic2 landerPicRight1 landerPicRight2
 
         checkKey do -- Left
-            ld DE 0x00_01
+            ld DE 0x00_02
             add HL DE
             ld [landerVX] HL
             setPic2 landerPicLeft1 landerPicLeft2
@@ -230,15 +221,22 @@ game = mdo
 
     -- | Post: `HL` points to screen address where lander should be drawn
     landerScreenAddr <- labelled do
-        ld D 0
-        ldVia A E [landerX + 1]
         ld HL videoStart
+        ld D 0
+
+        -- Apply X coordinate
+        ldVia A E [landerX + 1]
+        replicateM_ 1 $ sra E
         add HL DE
+
+        -- Apply Y coordinate
         ldVia A E [landerY + 1]
+        replicateM_ 2 $ sra E
         decLoopB 6 do
             sla E
             rl D
         add HL DE
+
         ret
 
     drawLander <- labelled do
