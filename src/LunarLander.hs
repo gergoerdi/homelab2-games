@@ -80,24 +80,47 @@ game = mdo
     lfsr <- labelled lfsr10
 
     initTerrain <- labelled do
-        ld DE 0x01 -- TODO: persist this between runs
+        ld DE 0x1234 -- TODO: persist this between runs
+
+        -- Choose a random column for the platform
+        withLabel \loop -> do
+            call lfsr
+            ld A E
+            Z80.and 0x3f
+            cp (rowstride - platformWidth)
+            jp NC loop
+        ld [platform] A
+        ld C A
+
         ld HL terrain
-        decLoopB platformCols do
+        decLoopB (rowstride - platformWidth + 1) do
             call lfsr
             ld A E
             Z80.and 0x07
             Z80.or 0x18
-            ld C B
-            decLoopB platformWidth do
-                ld [HL] A
-                inc HL
-            ld B C
+            ld [HL] A
+            inc HL
+
+            -- Is this where the platform is?
+            push AF
+            ld A C
+            cp B
+            unlessFlag NZ do
+                pop AF
+                ld C B
+                decLoopB (platformWidth - 1) do
+                    ld [HL] A
+                    inc HL
+                ld B C
+                ld C 0xff -- Ensure no more trigger of this branch
+                push AF
+            pop AF
         ret
 
     drawTerrain <- labelled do
         ld IY terrain
-        ld IX $ videoStart + ((rowstride `mod` platformWidth) `div` 2)
-        decLoopB (platformCols * platformWidth) do
+        ld IX videoStart
+        decLoopB rowstride do
             push IX
             pop HL
             inc IX
