@@ -179,7 +179,7 @@ game = mdo
         -- add IX DE
         -- ld A [IX]
         -- sub 4
-        ld A 80
+        ld A 160
         cp H
         unlessFlag NC do
             ld H A
@@ -240,7 +240,7 @@ game = mdo
 
         -- Apply Y coordinate
         ldVia A E [landerY + 1]
-        replicateM_ 2 $ sra E
+        replicateM_ 3 $ srl E
         decLoopB 6 do
             sla E
             rl D
