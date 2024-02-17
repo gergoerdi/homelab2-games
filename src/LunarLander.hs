@@ -58,9 +58,7 @@ game = mdo
     drawRight <- labelled $ db [0]
 
     let platformWidth :: Num a => a
-        platformWidth = 6
-        platformCols :: Integral a => a
-        platformCols = rowstride `div` platformWidth
+        platformWidth = 8
 
     terrain <- labelled $ db $ replicate rowstride 0
     platform <- labelled $ db [0]
@@ -75,7 +73,9 @@ game = mdo
             call lfsr
             ld A E
             Z80.and 0x3f
-            cp (rowstride - platformWidth)
+            cp 0
+            jp Z loop
+            cp (rowstride - platformWidth + 2)
             jp NC loop
         ld [platform] A
         ld C A
@@ -113,7 +113,7 @@ game = mdo
         ld DE 0xffff
         push DE
 
-        decLoopB rowstride do
+        decLoopB rowstride mdo
             push IX
             pop HL
             inc IX
@@ -127,14 +127,27 @@ game = mdo
                 rl D
             add HL DE
 
-            -- Make the surface a bit ragged
+            -- Is this the platform?
+            ld A [platform]
+            add A (platformWidth - 1)
+            sub B
+            cp platformWidth
+            jp C drawPlatform
+
+            -- If not, make the surface a bit ragged so the platform stands out
             pop DE
             call lfsr
             ld A E
-            Z80.and 0x03
-            Z80.or 0xfc
-            ld [HL] A
+            Z80.and 0x02
+            Z80.add A 0xfc
             push DE
+            jp afterPlatform
+
+            drawPlatform <- labelled do
+                ld A 0xa2
+
+            afterPlatform <- label
+            ld [HL] A
 
             ld DE rowstride
             add HL DE
