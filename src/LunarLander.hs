@@ -139,13 +139,14 @@ game = mdo
             ld DE rowstride
             add HL DE
 
+            -- Draw the rest of the lines all the way to bottom of screen
             push BC
             withLabel \loop -> do
                 ld A 0xff
                 ld [HL] A
                 add HL DE
                 ld A H
-                cp 0x00
+                cp 0x00 -- We've reached the end of the screen when we've wrapped around the memory address
                 jp NZ loop
             pop BC
 
@@ -164,22 +165,22 @@ game = mdo
 
         -- Clamp top
         ld A H
-        cp 180
+        cp (31 * 8)
         unlessFlag C do
             ld H 0
             -- ld DE 0
             -- ld [landerVY] DE
 
         -- Clamp bottom
-        -- ld IX terrain
-        -- ld D 0
-        -- ldVia A E [landerX  + 1]
-        -- replicateM_ 2 $
-        sra E
-        -- add IX DE
-        -- ld A [IX]
-        -- sub 4
-        ld A 160
+        ld IX terrain
+        ld D 0
+        ldVia A E [landerX  + 1]
+        replicateM_ 2 $ srl E
+        add IX DE
+        ld A [IX]
+        sub 4
+
+        replicateM_ 3 $ sla A
         cp H
         unlessFlag NC do
             ld H A
