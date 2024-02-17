@@ -81,11 +81,34 @@ game = mdo
         ld C A
 
         ld HL terrain
+
+        call lfsr
+        ld A E
+        Z80.and 0x07
+        add A 16
+
         decLoopB (rowstride - platformWidth + 1) do
+            -- call lfsr
+            -- ld A E
+            -- Z80.and 0x07
+            -- Z80.or 0x18
+
+            -- Calculate into A the next height
+            push BC
+            ld B A
             call lfsr
             ld A E
             Z80.and 0x07
-            Z80.or 0x18
+            sub 4
+            add A B
+            pop BC
+
+
+            cp 31
+            unlessFlag C $ ld A 29
+            cp 8
+            unlessFlag NC $ ld A 10
+
             ld [HL] A
             inc HL
 
