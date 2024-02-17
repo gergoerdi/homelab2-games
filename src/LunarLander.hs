@@ -4,6 +4,7 @@ import Z80
 import Z80.Utils
 import Z80.Machine.HomeLab.HL34
 import Data.Word
+import Data.Bits
 import Control.Monad (forM_, replicateM_)
 import LFSR
 
@@ -48,7 +49,7 @@ game = mdo
 
     clearScreen <- labelled clearScreen_
     frame <- labelled $ db [0]
-    landerX <- labelled $ dw [30 * 256]
+    landerX <- labelled $ dw [30 `shiftL` 10]
     landerY <- labelled $ dw [4 * 256]
     landerVX <- labelled $ dw [0]
     landerVY <- labelled $ dw [0]
@@ -155,22 +156,6 @@ game = mdo
         ld HL [landerX]
         ld DE [landerVX]
         add HL DE
-
-        -- Clamp left-hand side
-        ld A H
-        cp 128
-        unlessFlag C do
-            ld H 0
-            -- ld DE 0
-            -- ld [landerVX] DE
-
-        -- Clamp right-hand side
-        ld A H
-        cp (128 - 5 * 2)
-        unlessFlag C do
-            ld H (128 - 5 * 2)
-            -- ld DE 0
-            -- ld [landerVX] DE
         ld [landerX] HL
 
         ld HL [landerY]
@@ -250,7 +235,7 @@ game = mdo
 
         -- Apply X coordinate
         ldVia A E [landerX + 1]
-        replicateM_ 1 $ sra E
+        replicateM_ 2 $ srl E
         add HL DE
 
         -- Apply Y coordinate
@@ -295,22 +280,43 @@ game = mdo
 
     -- | Pre: `IX` contains sprite's starting address
     drawSprite <- labelled do
-        -- ld IX landerPic
-        -- ld L [IX]
-        -- ld H [IX + 1]
-        -- push HL
-        -- pop IX
-
         call landerScreenAddr
-        ld DE $ rowstride - 5
         decLoopB 5 do
             ld C B
+
+            ld DE $ rowstride - 5
             decLoopB 5 do
                 ld A [IX]
                 inc IX
                 Z80.and A
                 unlessFlag Z $ ld [HL] A
+
+                -- Increment HL, then check if it would have caused a line break.
+                push DE
+                ld D H
+                ld A L
+                Z80.and 0b1100_0000
                 inc HL
+                ld E A
+                ld A L
+                Z80.and 0b1100_0000
+
+                skippable \noLineBreak -> mdo
+                    -- Did we stay on the same line?
+                    cp E
+                    jp NZ lineBreak
+
+                    -- We did, so it's all OK -- HL is correct, and DE needs no updating
+                    pop DE
+                    jp noLineBreak
+
+                    -- We didn't, so reset HL to start of old HL's line (temporarily stored in DE)
+                    lineBreak <- label
+                    ex DE HL
+                    pop DE
+                    ld DE $ rowstride + rowstride - 5
+
+
             add HL DE
             ld B C
         ret
