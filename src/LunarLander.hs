@@ -73,10 +73,10 @@ game = mdo
     drawLeft <- labelled $ db [0]
     drawRight <- labelled $ db [0]
 
-    let platformWidth :: Num a => a
+    let platformWidth, landerWidth, landerHeight :: Num a => a
         platformWidth = 8
-        landerWidth :: Num a => a
         landerWidth = 5
+        landerHeight = 5
 
     terrain <- labelled $ db $ replicate rowstride 0
     platform <- labelled $ db [0]
@@ -375,7 +375,7 @@ game = mdo
         ldVia A [collision] 0
 
         call landerScreenAddr
-        decLoopB 5 do
+        decLoopB landerHeight do
             ld C B
 
             push HL
@@ -414,13 +414,26 @@ game = mdo
 
     clearLander <- labelled do
         call landerScreenAddr
-        ld DE $ rowstride - landerWidth
-        ld A 0x00
-        decLoopB 5 do
+        decLoopB landerHeight do
             ld C B
+
+            push HL
             decLoopB landerWidth do
-                ld [HL] A
-                inc HL
+                ld [HL] 0x00
+
+                -- Increment HL's low 6 bits. Everything else stays same, for wrap-around
+                ld A L
+                Z80.and 0b1100_0000
+                ld E A
+
+                inc L
+                ld A L
+                Z80.and 0b0011_1111
+                Z80.or E
+                ld L A
+
+            pop HL
+            ld DE rowstride
             add HL DE
             ld B C
         ret
