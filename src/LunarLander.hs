@@ -6,6 +6,7 @@ import Z80.Machine.HomeLab.HL34
 import Data.Word
 import Data.Bits
 import Control.Monad (forM_, replicateM_, unless)
+import Data.Char (ord)
 import LFSR
 
 game :: Z80ASM
@@ -31,6 +32,7 @@ game = mdo
                 ld HL frame
                 inc [HL]
 
+                call drawHUD
                 call clearLander
                 call drawTerrainTop
 
@@ -143,23 +145,57 @@ game = mdo
         ld [terrainRNG] DE
         ret
 
+    drawHUD <- labelled do
+        ld IX videoStart
+        ld A 0x00
+        decLoopB rowstride do
+            ld [IX] A
+            inc IX
+        call checkSpeed
+        unlessFlag Z do
+            ld IX $ videoStart + rowstride - 3
+            ld A $ fromIntegral . ord $ '!'
+            ld [IX + 0] A
+            ld [IX + 1] A
+            ld [IX + 2] A
+        ret
+
     -- | Post: `Z` flag is set if our speed is good for landing
     checkSpeed <- labelled do
         ld BC [landerVX]
         ld DE [landerVY]
 
-        -- Check high bytes first
+        -- Check horizontal high byte, ignore sign
         ld A B
-        Z80.or A
-        ret NZ
-        ld A D
+        Z80.and 0b1000_0000
+        unlessFlag Z do
+            ld A B
+            cpl
+            ld B A
+            ld A C
+            neg
+            ld C A
+        ld A B
         Z80.or A
         ret NZ
 
-        -- Check low bytes
-        Z80.and 0b1100_0000
+        -- Check horizontal low byte
+        ld A C
+        Z80.and 0b1110_0000
         ret NZ
-        ld A B
+
+        -- Check vertical high byte (signed)
+        ld A D
+        Z80.and 0b1000_0000 -- If vertical speed is upwards, that's good
+        unlessFlag Z do
+            Z80.xor A -- clear Z flag
+            ret
+        ld A D
+        Z80.and 0b0111_1111
+        ret NZ
+
+        -- Check vertical low byte
+        ld A E
         Z80.and 0b1100_0000
         ret
 
