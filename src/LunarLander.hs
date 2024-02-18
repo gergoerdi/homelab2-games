@@ -5,7 +5,7 @@ import Z80.Utils
 import Z80.Machine.HomeLab.HL34
 import Data.Word
 import Data.Bits
-import Control.Monad (forM_, replicateM_)
+import Control.Monad (forM_, replicateM_, unless)
 import LFSR
 
 game :: Z80ASM
@@ -163,116 +163,70 @@ game = mdo
         Z80.and 0b1100_0000
         ret
 
-    drawTerrain <- labelled do
-        ld IY terrain
-        ld IX videoStart
+    let drawTerrain_ onlyTop = do
+            ld IY terrain
+            ld IX videoStart
 
-        -- We'll use this to randomize the surface "texture"
-        ld DE 0xffff
-        push DE
-
-        decLoopB rowstride mdo
-            push IX
-            pop HL
-            inc IX
-
-            -- Calculate into HL the start (topmost pixel) of the given terrain
-            ld D 0
-            ldVia A E [IY]
-            inc IY
-            replicateM_ 6 do
-                sla E
-                rl D
-            add HL DE
-
-            -- Is this the platform?
-            ld A [platform]
-            add A (platformWidth - 1)
-            sub B
-            cp platformWidth
-            jp C drawPlatform
-
-            -- If not, make the surface a bit ragged so the platform stands out
-            pop DE
-            call lfsr
-            ld A E
-            Z80.and 0x02
-            Z80.add A 0xfc
+            -- We'll use this to randomize the surface "texture"
+            ld DE 0xffff
             push DE
-            jp afterPlatform
 
-            drawPlatform <- labelled do
-                ld A 0xa2
+            decLoopB rowstride mdo
+                push IX
+                pop HL
+                inc IX
 
-            afterPlatform <- label
-            ld [HL] A
-
-            ld DE rowstride
-            add HL DE
-
-            -- Draw the rest of the lines all the way to bottom of screen
-            push BC
-            withLabel \loop -> do
-                ld A 0xff
-                ld [HL] A
+                -- Calculate into HL the start (topmost pixel) of the given terrain
+                ld D 0
+                ldVia A E [IY]
+                inc DE
+                inc IY
+                replicateM_ 6 do -- Multiply DE by 64
+                    sla E
+                    rl D
                 add HL DE
-                ld A H
-                cp 0x00 -- We've reached the end of the screen when we've wrapped around the memory address
-                jp NZ loop
-            pop BC
 
-        pop DE
-        ret
+                -- Is this the platform?
+                ld A [platform]
+                add A (platformWidth - 1)
+                sub B
+                cp platformWidth
+                jp C drawPlatform
 
-    drawTerrainTop <- labelled do
-        ld IY terrain
-        ld IX videoStart
+                -- If not, make the surface a bit ragged so the platform stands out
+                pop DE
+                call lfsr
+                ld A E
+                Z80.and 0x02
+                Z80.add A 0xfc
+                push DE
+                jp afterPlatform
 
-        -- We'll use this to randomize the surface "texture"
-        ld DE 0xffff
-        push DE
+                drawPlatform <- labelled do
+                    ld A 0xa2
 
-        decLoopB rowstride mdo
-            push IX
-            pop HL
-            inc IX
+                afterPlatform <- label
+                ld [HL] A
 
-            -- Calculate into HL the start (topmost pixel) of the given terrain
-            ld D 0
-            ldVia A E [IY]
-            inc IY
-            replicateM_ 6 do
-                sla E
-                rl D
-            add HL DE
+                ld DE rowstride
+                add HL DE
 
-            -- Is this the platform?
-            ld A [platform]
-            add A (platformWidth - 1)
-            sub B
-            cp platformWidth
-            jp C drawPlatform
-
-            -- If not, make the surface a bit ragged so the platform stands out
+                unless onlyTop do
+                    -- Draw the rest of the lines all the way to bottom of screen
+                    push BC
+                    withLabel \loop -> do
+                        ld A 0xff
+                        ld [HL] A
+                        add HL DE
+                        ld A H
+                        cp 0x00 -- We've reached the end of the screen when we've wrapped around the memory address
+                        jp NZ loop
+                    pop BC
             pop DE
-            call lfsr
-            ld A E
-            Z80.and 0x02
-            Z80.add A 0xfc
-            push DE
-            jp afterPlatform
+            ret
 
-            drawPlatform <- labelled do
-                ld A 0xa2
-
-            afterPlatform <- label
-            ld [HL] A
-
-            ld DE rowstride
-            add HL DE
-
-        pop DE
-        ret
+    drawTerrain <- labelled $ drawTerrain_ False
+    drawTerrainTop <- labelled $ drawTerrain_ True
 
     -- | Post: `Z` flag is cleared iff we have landed on the platform (regardless of speed)
     moveLander <- labelled do
@@ -379,6 +333,7 @@ game = mdo
         -- Apply Y coordinate
         ldVia A E [landerY + 1]
         replicateM_ 3 $ srl E
+        inc E
         decLoopB 6 do
             sla E
             rl D
