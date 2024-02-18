@@ -378,10 +378,8 @@ game = mdo
         decLoopB 5 do
             ld C B
 
-            ld DE $ rowstride - 5
+            push HL
             decLoopB landerWidth do
-                push DE
-
                 ld A [IX]
                 inc IX
                 Z80.and A
@@ -392,31 +390,19 @@ game = mdo
                     unlessFlag Z $ ldVia A [collision] 1
                     ld [HL] D
 
-                -- Increment HL, then check if it would have caused a line break.
-                ld D H
+                -- Increment HL's low 6 bits. Everything else stays same, for wrap-around
                 ld A L
                 Z80.and 0b1100_0000
-                inc HL
                 ld E A
+
+                inc L
                 ld A L
-                Z80.and 0b1100_0000
+                Z80.and 0b0011_1111
+                Z80.or E
+                ld L A
 
-                skippable \noLineBreak -> mdo
-                    -- Did we stay on the same line?
-                    cp E
-                    jp NZ lineBreak
-
-                    -- We did, so it's all OK -- HL is correct, and DE needs no updating
-                    pop DE
-                    jp noLineBreak
-
-                    -- We didn't, so reset HL to start of old HL's line (temporarily stored in DE)
-                    lineBreak <- label
-                    ex DE HL
-                    pop DE
-                    ld DE $ rowstride + rowstride - landerWidth
-
-
+            pop HL
+            ld DE rowstride
             add HL DE
             ld B C
 
