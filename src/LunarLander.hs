@@ -290,8 +290,7 @@ game = mdo
         cp (31 * 8)
         unlessFlag C do
             ld H 0
-            -- ld DE 0
-            -- ld [landerVY] DE
+            ldVia DE [landerVY] 0
 
         -- Did we just land? `C` will record if yes.
         ld C 0
