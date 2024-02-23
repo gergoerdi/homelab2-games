@@ -211,7 +211,7 @@ game = mdo
 
         -- Check vertical low byte
         ld A E
-        Z80.and 0b1100_0000
+        Z80.and 0b1000_0000
         ret
 
     let drawTerrain_ onlyTop = do
