@@ -24,6 +24,7 @@ game = mdo
             ldVia DE [landerVX] 0x0000
             ldVia DE [landerY] (1 `shiftL` 11)
             ldVia DE [landerVY] 0x0000
+            ldVia DE [fuel] 0x9000
 
             call clearScreen
             call drawTerrain
@@ -66,9 +67,10 @@ game = mdo
                     jp Z waitFrame2
 
     clearScreen <- labelled clearScreen_
+    fuel <- labelled $ dw [0]
     frame <- labelled $ db [0]
-    landerX <- labelled $ dw [30 `shiftL` 10]
-    landerY <- labelled $ dw [4 * 256]
+    landerX <- labelled $ dw [0]
+    landerY <- labelled $ dw [0]
     landerVX <- labelled $ dw [0]
     landerVY <- labelled $ dw [0]
     drawDown <- labelled $ db [0]
@@ -151,6 +153,19 @@ game = mdo
         decLoopB rowstride do
             ld [IX] A
             inc IX
+
+        -- Fuel gauge
+        ld IX $ videoStart + 31 - 10
+        ldVia A B [fuel + 1]
+        replicateM_ 3 $ srl B
+        inc B
+        ld A 0xff
+        withLabel \loop -> do
+            ld [IX] A
+            inc IX
+            djnz loop
+
+        -- Speed hazard indicator
         call checkSpeed
         unlessFlag Z do
             ld IX $ videoStart + rowstride - 3
@@ -331,24 +346,40 @@ game = mdo
                 ld IX dir
                 dec [IX]
 
-        ld HL [landerVY]
-        checkKey do -- Down
+            useFuel amt body = skippable \noFuel -> do
+                ld HL [fuel]
+                inc H
+                dec H
+                unlessFlag NZ do
+                    inc L
+                    dec L
+                    jp Z noFuel
+
+                ld DE $ negate amt
+                add HL DE
+                ld [fuel] HL
+
+                body
+
+        checkKey $ useFuel 0x0020 do
+            ld HL [landerVY]
+            setDir drawDown
             ld DE $ negate 0x00_04
             add HL DE
             ld [landerVY] HL
-            setDir drawDown
 
         checkKey do -- Up
             pure ()
 
-        ld HL [landerVX]
-        checkKey do -- Right
+        checkKey $ useFuel 0x0010 do -- Right
+            ld HL [landerVX]
             ld DE $ negate 0x00_02
             add HL DE
             ld [landerVX] HL
             setDir drawRight
 
-        checkKey do -- Left
+        checkKey $ useFuel 0x0010 do -- Left
+            ld HL [landerVX]
             ld DE 0x00_02
             add HL DE
             ld [landerVX] HL
