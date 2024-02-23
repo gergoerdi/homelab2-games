@@ -54,18 +54,54 @@ game = mdo
 
                 jp NZ endGame
 
-                -- Wait for end vblank
-                withLabel \waitFrame1 -> do
-                    ld A [0xe802]
-                    Z80.bit 0 A
-                    jp NZ waitFrame1
+                call waitFrame
 
-                -- Wait for start of vblank
-                withLabel \waitFrame2 -> do
-                    ld A [0xe802]
-                    Z80.bit 0 A
-                    jp Z waitFrame2
+            -- Doom-style game over transition
+            ld DE 0x0001
+            ld HL videoStart
+            ld [HL] 0x94
+            decLoopB 64 do
+                ld C B
+                decLoopB 32 do
+                    call lfsrScreen
+                    ld HL videoStart
+                    add HL DE
+                    ld [HL] 0x94
+                call waitFrame
+                ld B C
 
+            ld HL gameover1
+            ld IX $ videoStart + rowstride * (numLines `div` 2 - 1) + (rowstride - 11) `div` 2
+            skippable \end -> loopForever do
+                ld A [HL]
+                inc HL
+                Z80.and A
+                Z80.jp Z end
+
+                ld [IX] A
+                ld [IX - rowstride] 0x20
+                inc IX
+
+            ld HL gameover2
+            ld IX $ videoStart + rowstride * (numLines `div` 2) + (rowstride - 11) `div` 2
+            skippable \end -> loopForever do
+                ld A [HL]
+                inc HL
+                Z80.and A
+                Z80.jp Z end
+
+                ld [IX] A
+                ld [IX + rowstride] 0x20
+                inc IX
+
+            -- Wait for SPACE key press
+            withLabel \loop -> do
+                ld A [0xe801]
+                rra
+                jp C loop
+
+    gameover1 <- labelled $ db $ (<> [0]) $ map (fromIntegral . ord) $ " Game Over "
+    gameover2 <- labelled $ db $ (<> [0]) $ map (fromIntegral . ord) $ "Press SPACE"
     clearScreen <- labelled clearScreen_
     fuel <- labelled $ dw [0]
     frame <- labelled $ db [0]
@@ -87,6 +123,20 @@ game = mdo
     terrainRNG <- labelled $ dw [0]
 
     lfsr <- labelled lfsr10
+    lfsrScreen <- labelled lfsr11
+
+    waitFrame <- labelled do
+        -- Wait for end vblank
+        withLabel \waitFrame1 -> do
+            ld A [0xe802]
+            Z80.bit 0 A
+            jp NZ waitFrame1
+
+        -- Wait for start of vblank
+        loopForever do
+            ld A [0xe802]
+            Z80.bit 0 A
+            ret NZ
 
     initTerrain <- labelled do
         ld DE [terrainRNG]
