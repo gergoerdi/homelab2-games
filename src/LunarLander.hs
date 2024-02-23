@@ -154,25 +154,40 @@ game = mdo
             ld [IX] A
             inc IX
 
-        -- Fuel gauge
-        ld IX $ videoStart + 31 - 10
-        ldVia A B [fuel + 1]
-        replicateM_ 3 $ srl B
-        inc B
-        ld A 0xff
-        withLabel \loop -> do
+        ld IX $ videoStart + 2
+        forM_ "FUEL:" \c -> do
+            ld A $ fromIntegral . ord $ c
             ld [IX] A
             inc IX
-            djnz loop
+
+        -- Fuel gauge
+        ld IX $ videoStart + 2 + 6
+        ld BC [fuel]
+        replicateM_ 3 $ srl B
+
+        -- Always show one unit of fuel if there's any left
+        unlessFlag NZ do
+            inc C
+            dec C
+            unlessFlag Z $ inc B
+        ld A B
+        Z80.and A
+        unlessFlag Z do
+                withLabel \loop -> do
+                    ld A 0xa4
+                    ld [IX] A
+                    inc IX
+                    djnz loop
 
         -- Speed hazard indicator
         call checkSpeed
         unlessFlag Z do
-            ld IX $ videoStart + rowstride - 3
-            ld A $ fromIntegral . ord $ '!'
-            ld [IX + 0] A
-            ld [IX + 1] A
-            ld [IX + 2] A
+            let s = "!! DANGER !!"
+            ld IX $ videoStart + rowstride - 2 - fromIntegral (length s)
+            forM_ s \c -> do
+                ld A $ fromIntegral . ord $ c
+                ld [IX] A
+                inc IX
         ret
 
     -- | Post: `Z` flag is set if our speed is good for landing
