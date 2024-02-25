@@ -63,7 +63,7 @@ game = mdo
             decLoopB 64 do
                 ld C B
                 decLoopB 32 do
-                    call lfsrScreen
+                    call lfsr
                     ld HL videoStart
                     add HL DE
                     ld [HL] 0x94
@@ -122,8 +122,7 @@ game = mdo
     platform <- labelled $ db [0]
     terrainRNG <- labelled $ dw [0]
 
-    lfsr <- labelled lfsr10
-    lfsrScreen <- labelled lfsr11
+    lfsr <- labelled lfsr11
 
     waitFrame <- labelled do
         -- Wait for end vblank
