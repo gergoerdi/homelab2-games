@@ -16,20 +16,16 @@ game = mdo
 
     ldVia DE [terrainRNG] 0x0123
 
-    loopForever do -- New level
-        call initTerrain
+    loopForever do -- New game
+        ldVia DE [maxFuel] 0x9000
 
-        skippable \nextLevel -> loopForever do -- Play level
-            ldVia DE [landerX] (32 `shiftL` 10)
-            ldVia DE [landerVX] 0x0000
-            ldVia DE [landerY] (1 `shiftL` 11)
-            ldVia DE [landerVY] 0x0000
-            ldVia DE [fuel] 0x9000
-
+        skippable \endGame -> loopForever do -- Play level
+            call initLevel
+            call initTerrain
             call clearScreen
             call drawTerrain
 
-            skippable \endGame -> loopForever do
+            skippable \nextLevel -> loopForever do
                 ld HL frame
                 inc [HL]
 
@@ -59,55 +55,73 @@ game = mdo
                 call lfsr
                 ld [terrainRNG] DE
 
-            -- Doom-style game over transition
-            ld DE 0x0001
-            ld HL videoStart
-            ld [HL] 0x94
-            decLoopB 64 do
-                ld C B
-                decLoopB 32 do
-                    call lfsr
-                    ld HL videoStart
-                    add HL DE
-                    ld [HL] 0x94
-                call waitFrame
-                ld B C
+        call gameOver
 
-            ld HL gameover1
-            ld IX $ videoStart + rowstride * (numLines `div` 2 - 1) + (rowstride - 11) `div` 2
-            skippable \end -> loopForever do
-                ld A [HL]
-                inc HL
-                Z80.and A
-                Z80.jp Z end
+    initLevel <- labelled do
+        ldVia DE [landerX] (32 `shiftL` 10)
+        ldVia DE [landerVX] 0x0000
+        ldVia DE [landerY] (1 `shiftL` 11)
+        ldVia DE [landerVY] 0x0000
 
-                ld [IX] A
-                ld [IX - rowstride] 0x20
-                inc IX
+        ld HL [maxFuel]
+        ld [fuel] HL
+        ld DE $ negate 0x1000
+        add HL DE
+        ld [maxFuel] HL
+        ret
 
-            ld HL gameover2
-            ld IX $ videoStart + rowstride * (numLines `div` 2) + (rowstride - 11) `div` 2
-            skippable \end -> loopForever do
-                ld A [HL]
-                inc HL
-                Z80.and A
-                Z80.jp Z end
+    gameOver <- labelled mdo
+        -- Doom-style game over transition
+        ld DE 0x0001
+        ld HL videoStart
+        ld [HL] 0x94
+        decLoopB 64 do
+            ld C B
+            decLoopB 32 do
+                call lfsr
+                ld HL videoStart
+                add HL DE
+                ld [HL] 0x94
+            call waitFrame
+            ld B C
 
-                ld [IX] A
-                ld [IX + rowstride] 0x20
-                inc IX
+        ld HL gameover1
+        ld IX $ videoStart + rowstride * (numLines `div` 2 - 1) + (rowstride - 11) `div` 2
+        skippable \end -> loopForever do
+            ld A [HL]
+            inc HL
+            Z80.and A
+            Z80.jp Z end
 
-            -- Wait for SPACE key press
-            withLabel \loop -> do
-                ld A [0xe801]
-                rra
-                jp C loop
-            jp nextLevel
+            ld [IX] A
+            ld [IX - rowstride] 0x20
+            inc IX
 
-    gameover1 <- labelled $ db $ (<> [0]) $ map (fromIntegral . ord) $ " Game Over "
-    gameover2 <- labelled $ db $ (<> [0]) $ map (fromIntegral . ord) $ "Press SPACE"
+        ld HL gameover2
+        ld IX $ videoStart + rowstride * (numLines `div` 2) + (rowstride - 11) `div` 2
+        skippable \end -> loopForever do
+            ld A [HL]
+            inc HL
+            Z80.and A
+            Z80.jp Z end
+
+            ld [IX] A
+            ld [IX + rowstride] 0x20
+            inc IX
+
+        -- Wait for SPACE key press
+        loopForever do
+            ld A [0xe801]
+            rra
+            ret NC
+
+        gameover1 <- labelled $ db $ (<> [0]) $ map (fromIntegral . ord) $ " Game Over "
+        gameover2 <- labelled $ db $ (<> [0]) $ map (fromIntegral . ord) $ "Press SPACE"
+        pure ()
+
     clearScreen <- labelled clearScreen_
     fuel <- labelled $ dw [0]
+    maxFuel <- labelled $ dw [0]
     frame <- labelled $ db [0]
     landerX <- labelled $ dw [0]
     landerY <- labelled $ dw [0]
