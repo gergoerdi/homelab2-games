@@ -261,8 +261,8 @@ game = mdo
 
             cp 31
             unlessFlag C $ ld A 29
-            cp 8
-            unlessFlag NC $ ld A 10
+            cp 12
+            unlessFlag NC $ ld A 14
 
             ld [HL] A
             inc HL
