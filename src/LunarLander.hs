@@ -55,6 +55,9 @@ game = mdo
                 jp NZ endGame
 
                 call waitFrame
+                ld DE [terrainRNG]
+                call lfsr
+                ld [terrainRNG] DE
 
             -- Doom-style game over transition
             ld DE 0x0001
@@ -99,6 +102,7 @@ game = mdo
                 ld A [0xe801]
                 rra
                 jp C loop
+            jp nextLevel
 
     gameover1 <- labelled $ db $ (<> [0]) $ map (fromIntegral . ord) $ " Game Over "
     gameover2 <- labelled $ db $ (<> [0]) $ map (fromIntegral . ord) $ "Press SPACE"
