@@ -83,14 +83,18 @@ game = mdo
         -- Doom-style game over transition
         ld DE 0x0001
         ld HL videoStart
-        ld [HL] 0x94
         decLoopB 64 do
             ld C B
             decLoopB 32 do
                 call lfsr
-                ld HL videoStart
-                add HL DE
-                ld [HL] 0x94
+                -- Don't overwrite the HUD (i.e. if the top 10 bits are all 0)
+                ld A E
+                Z80.and 0b1100_0000
+                Z80.or D
+                unlessFlag Z do
+                    ld HL videoStart
+                    add HL DE
+                    ld [HL] 0x94
             call waitFrame
             ld B C
 
