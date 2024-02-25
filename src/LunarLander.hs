@@ -123,6 +123,22 @@ game = mdo
         ld BC $ fromIntegral . length $ title2
         ldir
 
+        -- A bunch of random stars
+        ld DE 0x1234
+        ld HL videoStart
+        decLoopB 50 do
+            call lfsr
+
+            -- Don't overwrite the HUD (i.e. if the top 10 bits are all 0)
+            ld A E
+            Z80.and 0b1100_0000
+            Z80.or D
+            unlessFlag Z do
+                ld HL videoStart
+                add HL DE
+                ld [HL] $ fromIntegral . ord $ '*'
+                call waitFrame
+
         printText [ ""
                   , "  Welcome to Lunar Lander  "
                   , ""
