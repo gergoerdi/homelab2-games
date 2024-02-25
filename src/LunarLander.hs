@@ -7,6 +7,7 @@ import Data.Word
 import Data.Bits
 import Control.Monad (forM_, replicateM_, unless)
 import Data.Char (ord)
+import Control.Monad
 import LFSR
 
 game :: Z80ASM
@@ -17,7 +18,8 @@ game = mdo
     ldVia DE [terrainRNG] 0x0123
 
     loopForever do -- New game
-        ldVia DE [maxFuel] 0x9000
+        ldVia A [level] 0
+        ldVia DE [maxFuel] 0xA000
 
         skippable \endGame -> loopForever do -- Play level
             call initLevel
@@ -58,14 +60,21 @@ game = mdo
         call gameOver
 
     initLevel <- labelled do
+        -- Increment [level] in BCD
+        ld A [level]
+        inc A
+        daa
+        ld [level] A
+
         ldVia DE [landerX] (32 `shiftL` 10)
         ldVia DE [landerVX] 0x0000
         ldVia DE [landerY] (1 `shiftL` 11)
         ldVia DE [landerVY] 0x0000
 
+        -- Set initial [fuel], decrement [maxFuel]
         ld HL [maxFuel]
         ld [fuel] HL
-        ld DE $ negate 0x1000
+        ld DE $ negate 0x0800
         add HL DE
         ld [maxFuel] HL
         ret
@@ -85,29 +94,40 @@ game = mdo
             call waitFrame
             ld B C
 
-        ld HL gameover1
-        ld IX $ videoStart + rowstride * (numLines `div` 2 - 1) + (rowstride - 11) `div` 2
-        skippable \end -> loopForever do
-            ld A [HL]
-            inc HL
-            Z80.and A
-            Z80.jp Z end
+        let printText lines = mdo
+                let height = fromIntegral $ length lines
+                    width = fromIntegral $ maximum . map length $ lines
 
-            ld [IX] A
-            ld [IX - rowstride] 0x20
-            inc IX
+                ld HL textData
+                forM_ (zip [0..] lines) \(row, line) -> do
+                    ld IX $ videoStart + rowstride * ((numLines - height) `div` 2 + row) + (rowstride - width) `div` 2
+                    skippable \end -> loopForever do
+                        ld A [HL]
+                        inc HL
+                        Z80.and A
+                        Z80.jp Z end
 
-        ld HL gameover2
-        ld IX $ videoStart + rowstride * (numLines `div` 2) + (rowstride - 11) `div` 2
-        skippable \end -> loopForever do
-            ld A [HL]
-            inc HL
-            Z80.and A
-            Z80.jp Z end
+                        ld [IX] A
+                        inc IX
+                    let padding = fromIntegral width - fromIntegral (length line)
+                    when (padding > 0) do
+                        decLoopB padding $ do
+                            ld [IX] 0x20
+                            inc IX
+                jp end
 
-            ld [IX] A
-            ld [IX + rowstride] 0x20
-            inc IX
+                textData <- labelled $ db $ mconcat
+                    [ bs <> [0x00] | line <- lines, let bs = map (fromIntegral .ord) line ]
+
+                end <- label
+                pure ()
+
+        printText [ ""
+                  , "  Game Over"
+                  , ""
+                  , " Press SPACE "
+                  , ""
+                  ]
 
         -- Wait for SPACE key press
         loopForever do
@@ -115,13 +135,14 @@ game = mdo
             rra
             ret NC
 
-        gameover1 <- labelled $ db $ (<> [0]) $ map (fromIntegral . ord) $ " Game Over "
-        gameover2 <- labelled $ db $ (<> [0]) $ map (fromIntegral . ord) $ "Press SPACE"
+        -- text1 <- labelled $ db $ (<> [0]) $ map (fromIntegral . ord) $ " Game Over "
+        -- text2 <- labelled $ db $ (<> [0]) $ map (fromIntegral . ord) $ "Press SPACE"
         pure ()
 
     clearScreen <- labelled clearScreen_
     fuel <- labelled $ dw [0]
     maxFuel <- labelled $ dw [0]
+    level <- labelled $ db [0]
     frame <- labelled $ db [0]
     landerX <- labelled $ dw [0]
     landerY <- labelled $ dw [0]
@@ -221,11 +242,17 @@ game = mdo
             ld [IX] A
             inc IX
 
-        ld IX $ videoStart + 2
-        forM_ "FUEL:" \c -> do
-            ld A $ fromIntegral . ord $ c
-            ld [IX] A
-            inc IX
+        let print s = mdo
+                ld HL strData
+                ld BC $ fromIntegral $ length s
+                ldir
+                jp end
+                strData <- labelled $ db $ map (fromIntegral . ord) s
+                end <- label
+                pure ()
+
+        ld DE $ videoStart + 2
+        print "FUEL:"
 
         -- Fuel gauge
         ld IX $ videoStart + 2 + 6
@@ -246,15 +273,29 @@ game = mdo
                     inc IX
                     djnz loop
 
+        -- Level
+        ld DE $ videoStart + rowstride `div` 2
+        print "LEVEL: "
+
+        ld A [level] -- It's in BCD
+        ld B A
+        replicateM_ 4 $ srl A
+        unlessFlag Z do
+            add A $ fromIntegral . ord $ '0'
+            ld [DE] A
+            inc DE
+        ld A B
+        Z80.and 0x0f
+        add A $ fromIntegral . ord $ '0'
+        ld [DE] A
+        inc DE
+
         -- Speed hazard indicator
         call checkSpeed
         unlessFlag Z do
             let s = "!! DANGER !!"
-            ld IX $ videoStart + rowstride - 2 - fromIntegral (length s)
-            forM_ s \c -> do
-                ld A $ fromIntegral . ord $ c
-                ld [IX] A
-                inc IX
+            ld DE $ videoStart + rowstride - 2 - fromIntegral (length s)
+            print s
         ret
 
     -- | Post: `Z` flag is set if our speed is good for landing
