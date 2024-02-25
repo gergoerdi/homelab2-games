@@ -17,6 +17,9 @@ game = mdo
 
     ldVia DE [terrainRNG] 0x0123
 
+    call clearScreen
+    call welcome
+
     loopForever do -- New game
         ldVia A [level] 0
         ldVia DE [maxFuel] 0xA000
@@ -79,6 +82,61 @@ game = mdo
         ld [maxFuel] HL
         ret
 
+    let printText lines = mdo
+            let height = fromIntegral $ length lines
+                width = fromIntegral $ maximum . map length $ lines
+
+            ld HL textData
+            forM_ (zip [0..] lines) \(row, line) -> do
+                ld IX $ videoStart + rowstride * ((numLines - height) `div` 2 + row) + (rowstride - width) `div` 2
+                skippable \end -> loopForever do
+                    ld A [HL]
+                    inc HL
+                    Z80.and A
+                    Z80.jp Z end
+
+                    ld [IX] A
+                    inc IX
+                let padding = fromIntegral width - fromIntegral (length line)
+                when (padding > 0) do
+                    decLoopB padding $ do
+                        ld [IX] 0x20
+                        inc IX
+            jp end
+
+            textData <- labelled $ db $ mconcat
+                [ bs <> [0x00] | line <- lines, let bs = map (fromIntegral .ord) line ]
+
+            end <- label
+            pure ()
+
+    welcome <- labelled mdo
+        let title1 = "(C) 2024 Gergő Érdi"
+            title2 = "https://gergo.erdi.hu/"
+
+        ld DE $ videoStart + 2
+        ld HL titleData
+        ld BC $ fromIntegral . length $ title1
+        ldir
+
+        ld DE $ videoStart + rowstride - 2 - (fromIntegral $ length title2)
+        ld BC $ fromIntegral . length $ title2
+        ldir
+
+        printText [ ""
+                  , "  Welcome to Lunar Lander  "
+                  , ""
+                  , " Press SPACE to start game "
+                  , ""
+                  ]
+        jp waitSpace
+        let fromChar = \case
+                'ő' -> 0x7c
+                'É' -> 0x5b
+                c -> fromIntegral . ord $ c
+        titleData <- labelled $ db $ concatMap (map fromChar) [title1, title2]
+        pure ()
+
     gameOver <- labelled mdo
         -- Doom-style game over transition
         ld DE 0x0001
@@ -98,50 +156,21 @@ game = mdo
             call waitFrame
             ld B C
 
-        let printText lines = mdo
-                let height = fromIntegral $ length lines
-                    width = fromIntegral $ maximum . map length $ lines
-
-                ld HL textData
-                forM_ (zip [0..] lines) \(row, line) -> do
-                    ld IX $ videoStart + rowstride * ((numLines - height) `div` 2 + row) + (rowstride - width) `div` 2
-                    skippable \end -> loopForever do
-                        ld A [HL]
-                        inc HL
-                        Z80.and A
-                        Z80.jp Z end
-
-                        ld [IX] A
-                        inc IX
-                    let padding = fromIntegral width - fromIntegral (length line)
-                    when (padding > 0) do
-                        decLoopB padding $ do
-                            ld [IX] 0x20
-                            inc IX
-                jp end
-
-                textData <- labelled $ db $ mconcat
-                    [ bs <> [0x00] | line <- lines, let bs = map (fromIntegral .ord) line ]
-
-                end <- label
-                pure ()
-
         printText [ ""
-                  , "  Game Over"
+                  , "            Game Over"
                   , ""
-                  , " Press SPACE "
+                  , " Press SPACE to start new game"
                   , ""
                   ]
 
         -- Wait for SPACE key press
+        jp waitSpace
+
+    waitSpace <- labelled do
         loopForever do
             ld A [0xe801]
             rra
             ret NC
-
-        -- text1 <- labelled $ db $ (<> [0]) $ map (fromIntegral . ord) $ " Game Over "
-        -- text2 <- labelled $ db $ (<> [0]) $ map (fromIntegral . ord) $ "Press SPACE"
-        pure ()
 
     clearScreen <- labelled clearScreen_
     fuel <- labelled $ dw [0]
