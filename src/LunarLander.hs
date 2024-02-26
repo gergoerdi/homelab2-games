@@ -636,13 +636,9 @@ game = mdo
 
                 -- Increment HL's low 6 bits. Everything else stays same, for wrap-around
                 ld A L
-                Z80.and 0b1100_0000
-                ld E A
-
-                inc L
-                ld A L
-                Z80.and 0b0011_1111
-                Z80.or E
+                replicateM_ 2 $ rlca
+                add A 0x04
+                replicateM_ 2 $ rrca
                 ld L A
 
             pop HL
@@ -667,13 +663,9 @@ game = mdo
 
                 -- Increment HL's low 6 bits. Everything else stays same, for wrap-around
                 ld A L
-                Z80.and 0b1100_0000
-                ld E A
-
-                inc L
-                ld A L
-                Z80.and 0b0011_1111
-                Z80.or E
+                replicateM_ 2 $ rlca
+                add A 0x04
+                replicateM_ 2 $ rrca
                 ld L A
 
             pop HL
