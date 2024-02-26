@@ -217,13 +217,14 @@ game = mdo
         withLabel \waitFrame1 -> do
             ld A [0xe802]
             Z80.bit 0 A
-            jp NZ waitFrame1
+            jp Z waitFrame1
 
         -- Wait for start of vblank
-        loopForever do
+        withLabel \waitFrame2 -> do
             ld A [0xe802]
             Z80.bit 0 A
-            ret NZ
+            jp NZ waitFrame2
+        ret
 
     initTerrain <- labelled do
         ld DE [terrainRNG]
