@@ -589,12 +589,16 @@ game = mdo
     leftSprite2 <- labelled $ db $ concat leftSprite2_
 
     drawLander <- labelled do
+        call landerScreenAddr
+
         let drawSprites sprite1 sprite2 = do
                 ld IX frame
                 Z80.bit 0 [IX]
                 ld IX sprite1
                 unlessFlag Z $ ld IX sprite2
+                push HL
                 call drawSprite
+                pop HL
 
         let drawSpritesIf dir sprite1 sprite2 = do
                 ld A [dir]
@@ -609,11 +613,11 @@ game = mdo
         jp drawSprite
 
     -- | Pre: `IX` contains sprite's starting address
+    -- | Pre: `HL` contains target video address
     -- | Post: `Z` flag is cleared iff there's been a collision
     drawSprite <- labelled mdo
         ldVia A [collision] 0
 
-        call landerScreenAddr
         decLoopB landerHeight do
             ld C B
 
