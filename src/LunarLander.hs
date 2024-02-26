@@ -36,7 +36,6 @@ game = mdo
 
                 call drawHUD
                 call clearLander
-                call drawTerrainTop
 
                 -- Apply gravity
                 ld HL [landerVY]
@@ -80,6 +79,14 @@ game = mdo
         ld DE $ negate 0x0800
         add HL DE
         ld [maxFuel] HL
+
+        -- Clear sprite erase buffer
+        ld HL landerEraseBuf
+        ld A 0x00
+        decLoopB (landerWidth * landerHeight) do
+            ld [HL] A
+            inc HL
+
         ret
 
     let printText lines = mdo
@@ -387,7 +394,7 @@ game = mdo
         Z80.and 0b1000_0000
         ret
 
-    let drawTerrain_ onlyTop = do
+    drawTerrain <- labelled do
             ld IY terrain
             ld IX videoStart
 
@@ -435,22 +442,18 @@ game = mdo
                 ld DE rowstride
                 add HL DE
 
-                unless onlyTop do
-                    -- Draw the rest of the lines all the way to bottom of screen
-                    push BC
-                    withLabel \loop -> do
-                        ld A 0xff
-                        ld [HL] A
-                        add HL DE
-                        ld A H
-                        cp 0x00 -- We've reached the end of the screen when we've wrapped around the memory address
-                        jp NZ loop
-                    pop BC
+                -- Draw the rest of the lines all the way to bottom of screen
+                push BC
+                withLabel \loop -> do
+                    ld A 0xff
+                    ld [HL] A
+                    add HL DE
+                    ld A H
+                    cp 0x00 -- We've reached the end of the screen when we've wrapped around the memory address
+                    jp NZ loop
+                pop BC
             pop DE
             ret
-
-    drawTerrain <- labelled $ drawTerrain_ False
-    drawTerrainTop <- labelled $ drawTerrain_ True
 
     -- | Post: `Z` flag is cleared iff we have landed on the platform (regardless of speed)
     moveLander <- labelled do
@@ -582,6 +585,7 @@ game = mdo
         ret
 
     landerSprite <- labelled $ db $ concat landerSprite_
+    landerEraseBuf <- labelled $ db $ replicate (landerWidth * landerHeight) 0x00
     downSprite1 <- labelled $ db $ concat downSprite1_
     downSprite2 <- labelled $ db $ concat downSprite2_
     rightSprite1 <- labelled $ db $ concat rightSprite1_
@@ -591,6 +595,31 @@ game = mdo
 
     drawLander <- labelled do
         call landerScreenAddr
+
+        -- Save sprite erase buffer
+        push HL
+        ld IX landerEraseBuf
+        decLoopB landerHeight do
+            ld C B
+
+            push HL
+            decLoopB landerWidth do
+                ld A [HL]
+                ld [IX] A
+                inc IX
+
+                -- Increment HL's low 6 bits. Everything else stays same, for wrap-around
+                ld A L
+                replicateM_ 2 $ rlca
+                add A 0x04
+                replicateM_ 2 $ rrca
+                ld L A
+
+            pop HL
+            ld DE rowstride
+            add HL DE
+            ld B C
+        pop HL
 
         let drawSprites sprite1 sprite2 = do
                 ld IX frame
@@ -654,12 +683,15 @@ game = mdo
 
     clearLander <- labelled do
         call landerScreenAddr
+        ld IX landerEraseBuf
         decLoopB landerHeight do
             ld C B
 
             push HL
             decLoopB landerWidth do
-                ld [HL] 0x00
+                ld A [IX]
+                ld [HL] A
+                inc IX
 
                 -- Increment HL's low 6 bits. Everything else stays same, for wrap-around
                 ld A L
