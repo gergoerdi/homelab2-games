@@ -34,9 +34,6 @@ game = mdo
                 ld HL frame
                 inc [HL]
 
-                call drawHUD
-                call clearLander
-
                 -- Apply gravity
                 ld HL [landerVY]
                 ld DE 0x00_01
@@ -50,14 +47,26 @@ game = mdo
                     jp NZ endGame
                     jp nextLevel
 
-                call drawLander
-
-                jp NZ endGame
-
-                call waitFrame
                 ld DE [terrainRNG]
                 call lfsr
                 ld [terrainRNG] DE
+
+                -- Wait for start of vblank
+                withLabel \wait -> do
+                    ld A [0xe802]
+                    rra
+                    jp C wait
+
+                call drawHUD
+                call clearLander
+                call drawLander
+                jp NZ endGame
+
+                -- Wait for end of vblank
+                withLabel \wait -> do
+                    ld A [0xe802]
+                    rra
+                    jp NC wait
 
         call gameOver
 
@@ -69,8 +78,10 @@ game = mdo
         ld [level] A
 
         ldVia DE [landerX] (32 `shiftL` 10)
+        ldVia A [landerX0] [landerX + 1]
         ldVia DE [landerVX] 0x0000
         ldVia DE [landerY] (1 `shiftL` 11)
+        ldVia A [landerY0] [landerY + 1]
         ldVia DE [landerVY] 0x0000
 
         -- Set initial [fuel], decrement [maxFuel]
@@ -200,6 +211,8 @@ game = mdo
     maxFuel <- labelled $ dw [0]
     level <- labelled $ db [0]
     frame <- labelled $ db [0]
+    landerX0 <- labelled $ db [0]
+    landerY0 <- labelled $ db [0]
     landerX <- labelled $ dw [0]
     landerY <- labelled $ dw [0]
     landerVX <- labelled $ dw [0]
@@ -220,17 +233,17 @@ game = mdo
     lfsr <- labelled lfsr11
 
     waitFrame <- labelled do
-        -- Wait for end vblank
+        -- Wait for end of vblank
         withLabel \waitFrame1 -> do
             ld A [0xe802]
-            Z80.bit 0 A
-            jp Z waitFrame1
+            rra
+            jp C waitFrame1
 
         -- Wait for start of vblank
         withLabel \waitFrame2 -> do
             ld A [0xe802]
-            Z80.bit 0 A
-            jp NZ waitFrame2
+            rra
+            jp NC waitFrame2
         ret
 
     initTerrain <- labelled do
@@ -458,11 +471,13 @@ game = mdo
     -- | Post: `Z` flag is cleared iff we have landed on the platform (regardless of speed)
     moveLander <- labelled do
         ld HL [landerX]
+        ldVia A [landerX0] H
         ld DE [landerVX]
         add HL DE
         ld [landerX] HL
 
         ld HL [landerY]
+        ldVia A [landerY0] H
         ld DE [landerVY]
         add HL DE
 
@@ -563,18 +578,19 @@ game = mdo
 
         ret
 
+    -- | Pre: `IX` points to X coordinate's high byte, `IY` points to Y coordinate's high byte
     -- | Post: `HL` points to screen address where lander should be drawn
     landerScreenAddr <- labelled do
         ld HL videoStart
         ld D 0
 
         -- Apply X coordinate
-        ldVia A E [landerX + 1]
+        ld E [IX]
         replicateM_ 2 $ srl E
         add HL DE
 
         -- Apply Y coordinate
-        ldVia A E [landerY + 1]
+        ld E [IY]
         replicateM_ 3 $ srl E
         inc E
         decLoopB 6 do
@@ -594,6 +610,8 @@ game = mdo
     leftSprite2 <- labelled $ db $ concat leftSprite2_
 
     drawLander <- labelled do
+        ld IX $ landerX + 1
+        ld IY $ landerY + 1
         call landerScreenAddr
 
         -- Save sprite erase buffer
@@ -627,7 +645,7 @@ game = mdo
                 ld IX sprite1
                 unlessFlag Z $ ld IX sprite2
                 push HL
-                call drawSprite
+                call drawSpriteNoCollision
                 pop HL
 
         let drawSpritesIf dir sprite1 sprite2 = do
@@ -640,48 +658,57 @@ game = mdo
         drawSpritesIf drawRight rightSprite1 rightSprite2
 
         ld IX landerSprite
-        jp drawSprite
+        jp drawSpriteCollision
 
     -- | Pre: `IX` contains sprite's starting address
     -- | Pre: `HL` contains target video address
     -- | Post: `Z` flag is cleared iff there's been a collision
-    drawSprite <- labelled mdo
-        ldVia A [collision] 0
+    drawSpriteCollision <- labelled $ drawSprite True
+    drawSpriteNoCollision <- labelled $ drawSprite False
 
-        decLoopB landerHeight do
-            ld C B
+    let drawSprite checkCollision = mdo
+            ldVia A [collision] 0
 
-            push HL
-            decLoopB landerWidth do
-                ld A [IX]
-                inc IX
-                Z80.and A
-                unlessFlag Z $ do
-                    ld D A
-                    ld A [HL]
+            decLoopB landerHeight do
+                ld C B
+
+                push HL
+                decLoopB landerWidth do
+                    ld A [IX]
+                    inc IX
                     Z80.and A
-                    unlessFlag Z $ ldVia A [collision] 1
-                    ld [HL] D
+                    unlessFlag Z $ do
+                        if checkCollision then do
+                            ld D A
+                            ld A [HL]
+                            Z80.and A
+                            unlessFlag Z $ ldVia A [collision] 1
+                            ld [HL] D
+                          else do
+                            ld [HL] A
 
-                -- Increment HL's low 6 bits. Everything else stays same, for wrap-around
-                ld A L
-                replicateM_ 2 $ rlca
-                add A 0x04
-                replicateM_ 2 $ rrca
-                ld L A
+                    -- Increment HL's low 6 bits. Everything else stays same, for wrap-around
+                    ld A L
+                    replicateM_ 2 $ rlca
+                    add A 0x04
+                    replicateM_ 2 $ rrca
+                    ld L A
 
-            pop HL
-            ld DE rowstride
-            add HL DE
-            ld B C
+                pop HL
+                ld DE rowstride
+                add HL DE
+                ld B C
 
-        ld A [collision]
-        Z80.and A
-        ret
-        collision <- labelled $ db [0]
-        pure ()
+            when checkCollision do
+                ld A [collision]
+                Z80.and A
+            ret
+            collision <- labelled $ db [0]
+            pure ()
 
     clearLander <- labelled do
+        ld IX landerX0
+        ld IY landerY0
         call landerScreenAddr
         ld IX landerEraseBuf
         decLoopB landerHeight do
