@@ -614,17 +614,45 @@ game = mdo
         ld IY $ landerY + 1
         call landerScreenAddr
 
-        -- Save sprite erase buffer
+        let drawSprites sprite1 sprite2 = do
+                ld IX frame
+                Z80.bit 0 [IX]
+                ld IX sprite1
+                unlessFlag Z $ ld IX sprite2
+                push HL
+                call drawSpriteDecor
+                pop HL
+
+        let drawSpritesIf dir sprite1 sprite2 = do
+                ld A [dir]
+                Z80.and A
+                unlessFlag Z $ drawSprites sprite1 sprite2
+
+        ld IX landerSprite
         push HL
-        ld IX landerEraseBuf
+        call drawSpriteMain
+        pop HL
+
+        push AF
+        drawSpritesIf drawDown downSprite1 downSprite2
+        drawSpritesIf drawLeft leftSprite1 leftSprite2
+        drawSpritesIf drawRight rightSprite1 rightSprite2
+        pop AF
+
+        ret
+
+    -- | Pre: `IX` contains sprite's starting address
+    -- | Pre: `HL` contains target video address
+    drawSpriteDecor <- labelled do
         decLoopB landerHeight do
             ld C B
 
             push HL
             decLoopB landerWidth do
-                ld A [HL]
-                ld [IX] A
+                ld A [IX]
                 inc IX
+                Z80.and A
+                unlessFlag Z $ ld [HL] A
 
                 -- Increment HL's low 6 bits. Everything else stays same, for wrap-around
                 ld A L
@@ -637,74 +665,51 @@ game = mdo
             ld DE rowstride
             add HL DE
             ld B C
-        pop HL
-
-        let drawSprites sprite1 sprite2 = do
-                ld IX frame
-                Z80.bit 0 [IX]
-                ld IX sprite1
-                unlessFlag Z $ ld IX sprite2
-                push HL
-                call drawSpriteNoCollision
-                pop HL
-
-        let drawSpritesIf dir sprite1 sprite2 = do
-                ld A [dir]
-                Z80.and A
-                unlessFlag Z $ drawSprites sprite1 sprite2
-
-        drawSpritesIf drawDown downSprite1 downSprite2
-        drawSpritesIf drawLeft leftSprite1 leftSprite2
-        drawSpritesIf drawRight rightSprite1 rightSprite2
-
-        ld IX landerSprite
-        jp drawSpriteCollision
+        ret
 
     -- | Pre: `IX` contains sprite's starting address
     -- | Pre: `HL` contains target video address
     -- | Post: `Z` flag is cleared iff there's been a collision
-    drawSpriteCollision <- labelled $ drawSprite True
-    drawSpriteNoCollision <- labelled $ drawSprite False
+    drawSpriteMain <- labelled mdo
+        ld IY landerEraseBuf
+        ldVia A [collision] 0
 
-    let drawSprite checkCollision = mdo
-            ldVia A [collision] 0
+        decLoopB landerHeight do
+            ld C B
 
-            decLoopB landerHeight do
-                ld C B
+            push HL
+            decLoopB landerWidth do
+                ld D [HL]
+                ld [IY] D
+                inc IY
 
-                push HL
-                decLoopB landerWidth do
-                    ld A [IX]
-                    inc IX
-                    Z80.and A
-                    unlessFlag Z $ do
-                        if checkCollision then do
-                            ld D A
-                            ld A [HL]
-                            Z80.and A
-                            unlessFlag Z $ ldVia A [collision] 1
-                            ld [HL] D
-                          else do
-                            ld [HL] A
-
-                    -- Increment HL's low 6 bits. Everything else stays same, for wrap-around
-                    ld A L
-                    replicateM_ 2 $ rlca
-                    add A 0x04
-                    replicateM_ 2 $ rrca
-                    ld L A
-
-                pop HL
-                ld DE rowstride
-                add HL DE
-                ld B C
-
-            when checkCollision do
-                ld A [collision]
+                ld A [IX]
+                inc IX
                 Z80.and A
-            ret
-            collision <- labelled $ db [0]
-            pure ()
+                unlessFlag Z $ do
+                    ld E A
+                    Z80.and D
+                    unlessFlag Z $ ldVia A [collision] 1
+                    ld A E
+                    ld [HL] A
+
+                -- Increment HL's low 6 bits. Everything else stays same, for wrap-around
+                ld A L
+                replicateM_ 2 $ rlca
+                add A 0x04
+                replicateM_ 2 $ rrca
+                ld L A
+
+            pop HL
+            ld DE rowstride
+            add HL DE
+            ld B C
+
+        ld A [collision]
+        Z80.and A
+        ret
+        collision <- labelled $ db [0]
+        pure ()
 
     clearLander <- labelled do
         ld IX landerX0
