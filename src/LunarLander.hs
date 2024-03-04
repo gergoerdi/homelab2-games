@@ -55,7 +55,7 @@ game = mdo
                 withLabel \wait -> do
                     ld A [0xe802]
                     rra
-                    jp C wait
+                    jp NC wait
 
                 call drawHUD
                 call clearLander
@@ -66,7 +66,7 @@ game = mdo
                 withLabel \wait -> do
                     ld A [0xe802]
                     rra
-                    jp NC wait
+                    jp C wait
 
         call gameOver
 
