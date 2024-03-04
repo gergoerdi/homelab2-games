@@ -217,9 +217,9 @@ game = mdo
     landerY <- labelled $ dw [0]
     landerVX <- labelled $ dw [0]
     landerVY <- labelled $ dw [0]
-    drawDown <- labelled $ db [0]
-    drawLeft <- labelled $ db [0]
-    drawRight <- labelled $ db [0]
+    fireDown <- labelled $ db [0]
+    fireLeft <- labelled $ db [0]
+    fireRight <- labelled $ db [0]
 
     let platformWidth, landerWidth, landerHeight :: Num a => a
         platformWidth = 8
@@ -523,9 +523,7 @@ game = mdo
 
     scanKeys <- labelled do
         ld A 0
-        ld [drawDown] A
-        ld [drawLeft] A
-        ld [drawRight] A
+        forM_ [fireDown, fireLeft, fireRight] \dir -> ld [dir] A
 
         ld A [0xe800]
 
@@ -554,7 +552,7 @@ game = mdo
 
         checkKey $ useFuel 0x0020 do
             ld HL [landerVY]
-            setDir drawDown
+            setDir fireDown
             ld DE $ negate 0x00_04
             add HL DE
             ld [landerVY] HL
@@ -567,14 +565,14 @@ game = mdo
             ld DE $ negate 0x00_02
             add HL DE
             ld [landerVX] HL
-            setDir drawRight
+            setDir fireRight
 
         checkKey $ useFuel 0x0010 do -- Left
             ld HL [landerVX]
             ld DE 0x00_02
             add HL DE
             ld [landerVX] HL
-            setDir drawLeft
+            setDir fireLeft
 
         ret
 
@@ -634,9 +632,9 @@ game = mdo
         pop HL
 
         push AF
-        drawSpritesIf drawDown downSprite1 downSprite2
-        drawSpritesIf drawLeft leftSprite1 leftSprite2
-        drawSpritesIf drawRight rightSprite1 rightSprite2
+        drawSpritesIf fireDown downSprite1 downSprite2
+        drawSpritesIf fireLeft leftSprite1 leftSprite2
+        drawSpritesIf fireRight rightSprite1 rightSprite2
         pop AF
 
         ret
