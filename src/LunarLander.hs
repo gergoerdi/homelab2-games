@@ -51,15 +51,18 @@ game = mdo
                 call lfsr
                 ld [terrainRNG] DE
 
+                call drawHUD
+                call drawLander
+
                 -- Wait for start of vblank
                 withLabel \wait -> do
                     ld A [0xe802]
                     rra
                     jp NC wait
 
-                call drawHUD
+                call renderHUD
                 call clearLander
-                call drawLander
+                call renderLander
                 jp NZ endGame
 
                 -- Wait for end of vblank
@@ -306,7 +309,7 @@ game = mdo
         ret
 
     drawHUD <- labelled do
-        ld IX videoStart
+        ld IX hudDrawBuf
         ld A 0x00
         decLoopB rowstride do
             ld [IX] A
@@ -321,11 +324,11 @@ game = mdo
                 end <- label
                 pure ()
 
-        ld DE $ videoStart + 2
+        ld DE $ hudDrawBuf + 2
         print "FUEL:"
 
         -- Fuel gauge
-        ld IX $ videoStart + 2 + 6
+        ld IX $ hudDrawBuf + 2 + 6
         ld BC [fuel]
         replicateM_ 3 $ srl B
 
@@ -344,7 +347,7 @@ game = mdo
                     djnz loop
 
         -- Level
-        ld DE $ videoStart + rowstride `div` 2
+        ld DE $ hudDrawBuf + rowstride `div` 2
         print "LEVEL: "
 
         ld A [level] -- It's in BCD
@@ -364,8 +367,15 @@ game = mdo
         call checkSpeed
         unlessFlag Z do
             let s = "!! DANGER !!"
-            ld DE $ videoStart + rowstride - 2 - fromIntegral (length s)
+            ld DE $ hudDrawBuf + rowstride - 2 - fromIntegral (length s)
             print s
+        ret
+
+    renderHUD <- labelled do
+        ld DE videoStart
+        ld BC rowstride
+        ld HL hudDrawBuf
+        ldir
         ret
 
     -- | Post: `Z` flag is set if our speed is good for landing
@@ -599,6 +609,8 @@ game = mdo
         ret
 
     landerSprite <- labelled $ db $ concat landerSprite_
+    landerDrawBuf <- labelled $ db $ replicate (landerWidth * landerHeight) 0x00
+    hudDrawBuf <- labelled $ db $ replicate 64 0x00
     landerEraseBuf <- labelled $ db $ replicate (landerWidth * landerHeight) 0x00
     downSprite1 <- labelled $ db $ concat downSprite1_
     downSprite2 <- labelled $ db $ concat downSprite2_
@@ -608,40 +620,65 @@ game = mdo
     leftSprite2 <- labelled $ db $ concat leftSprite2_
 
     drawLander <- labelled do
-        ld IX $ landerX + 1
-        ld IY $ landerY + 1
-        call landerScreenAddr
-
         let drawSprites sprite1 sprite2 = do
                 ld IX frame
                 Z80.bit 0 [IX]
                 ld IX sprite1
                 unlessFlag Z $ ld IX sprite2
-                push HL
-                call drawSpriteDecor
-                pop HL
+                call drawSprite
 
-        let drawSpritesIf dir sprite1 sprite2 = do
+            drawSpritesIf dir sprite1 sprite2 = do
                 ld A [dir]
                 Z80.and A
                 unlessFlag Z $ drawSprites sprite1 sprite2
 
-        ld IX landerSprite
-        push HL
-        call drawSpriteMain
-        pop HL
+        -- Clear buffer
+        ld HL landerDrawBuf
+        ld A 0x00
+        decLoopB (landerWidth * landerHeight) do
+            ld [HL] A
+            inc HL
 
-        push AF
+        ld IX landerSprite
+        call drawSprite
+
+        -- Draw decorations
         drawSpritesIf fireDown downSprite1 downSprite2
         drawSpritesIf fireLeft leftSprite1 leftSprite2
         drawSpritesIf fireRight rightSprite1 rightSprite2
+        ret
+
+    -- | Pre: `IX` is the sprite to draw
+    drawSprite <- labelled do
+        ld HL landerDrawBuf
+        decLoopB (landerWidth * landerHeight) do
+            ld A [IX]
+            inc IX
+            Z80.and A
+            unlessFlag Z $ ld [HL] A
+            inc HL
+        ret
+
+    renderLander <- labelled do
+        ld IX $ landerX + 1
+        ld IY $ landerY + 1
+        call landerScreenAddr
+
+        ld IX landerSprite
+        push HL
+        call checkCollision
+        pop HL
+
+        push AF
+        ld IX landerDrawBuf
+        call renderFromDrawBuf
         pop AF
 
         ret
 
-    -- | Pre: `IX` contains sprite's starting address
+    -- | Pre: `IX` contains draw buffer
     -- | Pre: `HL` contains target video address
-    drawSpriteDecor <- labelled do
+    renderFromDrawBuf <- labelled do
         decLoopB landerHeight do
             ld C B
 
@@ -668,7 +705,7 @@ game = mdo
     -- | Pre: `IX` contains sprite's starting address
     -- | Pre: `HL` contains target video address
     -- | Post: `Z` flag is cleared iff there's been a collision
-    drawSpriteMain <- labelled mdo
+    checkCollision <- labelled mdo
         ld IY landerEraseBuf
         ldVia A [collision] 0
 
@@ -685,11 +722,8 @@ game = mdo
                 inc IX
                 Z80.and A
                 unlessFlag Z $ do
-                    ld E A
                     Z80.and D
                     unlessFlag Z $ ldVia A [collision] 1
-                    ld A E
-                    ld [HL] A
 
                 -- Increment HL's low 6 bits. Everything else stays same, for wrap-around
                 ld A L
