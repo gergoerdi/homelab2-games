@@ -134,6 +134,7 @@ game = mdo
     welcome <- labelled mdo
         let title1 = "(C) 2024 Gergő Érdi"
             title2 = "https://gergo.erdi.hu/"
+            title3 = "With huge thanks to Péter Papp for help with debugging"
 
         ld DE $ videoStart + 2
         ld HL titleData
@@ -144,15 +145,19 @@ game = mdo
         ld BC $ fromIntegral . length $ title2
         ldir
 
+        ld DE $ videoStart + rowstride + 2
+        ld BC $ fromIntegral . length $ title3
+        ldir
+
         -- A bunch of random stars
         ld DE 0x1234
         ld HL videoStart
         decLoopB 50 do
             call lfsr
 
-            -- Don't overwrite the HUD (i.e. if the top 10 bits are all 0)
+            -- Don't overwrite the top two lines (i.e. if the top 9 bits are all 0)
             ld A E
-            Z80.and 0b1100_0000
+            Z80.and 0b1000_0000
             Z80.or D
             unlessFlag Z do
                 ld HL videoStart
@@ -169,9 +174,10 @@ game = mdo
         jp waitSpace
         let fromChar = \case
                 'ő' -> 0x7c
+                'é' -> 0x7b
                 'É' -> 0x5b
                 c -> fromIntegral . ord $ c
-        titleData <- labelled $ db $ concatMap (map fromChar) [title1, title2]
+        titleData <- labelled $ db $ concatMap (map fromChar) [title1, title2, title3]
         pure ()
 
     gameOver <- labelled mdo
