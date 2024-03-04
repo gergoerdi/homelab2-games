@@ -535,13 +535,7 @@ game = mdo
         ld A 0
         forM_ [fireDown, fireLeft, fireRight] \dir -> ld [dir] A
 
-        ld A [0xe800]
-
-        let checkKey body = skippable \notThis -> do
-                rra
-                jp C notThis
-                body
-            setDir dir = do
+        let setDir dir = do
                 ld IX dir
                 dec [IX]
 
@@ -560,29 +554,43 @@ game = mdo
 
                 body
 
-        checkKey $ useFuel 0x0020 do
-            ld HL [landerVY]
-            setDir fireDown
-            ld DE $ negate 0x00_04
-            add HL DE
-            ld [landerVY] HL
+        -- Space: fire main thruster
+        ld A [0xe801]
+        rra
+        unlessFlag C do
+            useFuel 0x0020 do
+                ld HL [landerVY]
+                setDir fireDown
+                ld DE $ negate 0x00_04
+                add HL DE
+                ld [landerVY] HL
+
+        ld A [0xe800]
+
+        let checkKey body = skippable \notThis -> do
+                rra
+                jp C notThis
+                body
+
+        checkKey do -- Down
+            pure ()
 
         checkKey do -- Up
             pure ()
 
-        checkKey $ useFuel 0x0010 do -- Right
-            ld HL [landerVX]
-            ld DE $ negate 0x00_02
-            add HL DE
-            ld [landerVX] HL
-            setDir fireRight
-
-        checkKey $ useFuel 0x0010 do -- Left
+        checkKey $ useFuel 0x0010 do -- Right arrow: fire left rocket
             ld HL [landerVX]
             ld DE 0x00_02
             add HL DE
             ld [landerVX] HL
             setDir fireLeft
+
+        checkKey $ useFuel 0x0010 do -- Left arrow: fire right rocket
+            ld HL [landerVX]
+            ld DE $ negate 0x00_02
+            add HL DE
+            ld [landerVX] HL
+            setDir fireRight
 
         ret
 
