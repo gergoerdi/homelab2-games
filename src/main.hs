@@ -11,7 +11,7 @@ import qualified LunarLander as LunarLander
 import Z80
 import Z80.Utils
 import Z80.ZX0.Compress
-import Z80.Machine.HomeLab.HTP
+import qualified Z80.Machine.HomeLab.HTP as HTP
 
 import Data.Word
 import qualified Data.ByteString as BS
@@ -35,16 +35,20 @@ emit2 :: String -> ASMBlock -> IO ()
 emit2 name block = do
     createDirectoryIfMissing True (takeDirectory name)
     BS.writeFile (name <> "-hl2" <.> "obj") $ asmData block
-    BS.writeFile (name <> "-hl2" <.> "htp") $ htp (fromString $ takeBaseName name)
-      [ block
-      , org 0x4002 $ dw [asmOrg block]
-      ]
+    let htp = HTP.htp (fromString $ takeBaseName name)
+          [ block
+          , org 0x4002 $ dw [asmOrg block]
+          ]
+    BS.writeFile (name <> "-hl2" <.> "htp") htp
+    HTP.renderToWav (name <> "-hl2" <.> "wav") htp
 
 emit4 :: String -> ASMBlock -> IO ()
 emit4 name block = do
     createDirectoryIfMissing True (takeDirectory name)
     BS.writeFile (name <> "-hl4" <.> "obj") $ asmData block
-    BS.writeFile (name <> "-hl4" <.> "htp") $ htp (fromString $ takeBaseName name)
-      [ block
-      , org 0x4002 $ dw [asmOrg block, asmOrg block]
-      ]
+    let htp = HTP.htp (fromString $ takeBaseName name)
+          [ block
+          , org 0x4002 $ dw [asmOrg block, asmOrg block]
+          ]
+    BS.writeFile (name <> "-hl4" <.> "htp") htp
+    HTP.renderToWav (name <> "-hl4" <.> "wav") htp
