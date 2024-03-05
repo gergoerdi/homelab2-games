@@ -158,18 +158,22 @@ game = mdo
         -- A bunch of random stars
         ld DE 0x1234
         ld HL videoStart
-        decLoopB 50 do
-            call lfsr
+        decLoopB 30 do
+            ld C B
+            decLoopB 2 $ withLabel \tryAgain -> do
+                call lfsr
 
-            -- Don't overwrite the top two lines (i.e. if the top 9 bits are all 0)
-            ld A E
-            Z80.and 0b1000_0000
-            Z80.or D
-            unlessFlag Z do
+                -- Don't overwrite the top two lines (i.e. if the top 9 bits are all 0)
+                ld A E
+                Z80.and 0b1000_0000
+                Z80.or D
+                jp Z tryAgain
+
                 ld HL videoStart
                 add HL DE
                 ld [HL] $ fromIntegral . ord $ '*'
-                call waitFrame
+            call waitFrame
+            ld B C
 
         printText [ ""
                   , "Welcome to Lunar Lander"
