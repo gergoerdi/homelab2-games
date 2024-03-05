@@ -105,11 +105,18 @@ game = mdo
 
     let printText lines = mdo
             let height = fromIntegral $ length lines
-                width = fromIntegral $ maximum . map length $ lines
+                width = 2 + (fromIntegral $ maximum . map length $ lines)
 
             ld HL textData
             forM_ (zip [0..] lines) \(row, line) -> do
                 ld IX $ videoStart + rowstride * ((numLines - height) `div` 2 + row) + (rowstride - width) `div` 2
+                let padding = fromIntegral width - fromIntegral (length line)
+                    padding1 = padding `div` 2
+                    padding2 = padding - padding1
+                when (padding1 > 0) do
+                    decLoopB padding1 $ do
+                        ld [IX] 0x20
+                        inc IX
                 skippable \end -> loopForever do
                     ld A [HL]
                     inc HL
@@ -118,9 +125,8 @@ game = mdo
 
                     ld [IX] A
                     inc IX
-                let padding = fromIntegral width - fromIntegral (length line)
-                when (padding > 0) do
-                    decLoopB padding $ do
+                when (padding2 > 0) do
+                    decLoopB padding2 $ do
                         ld [IX] 0x20
                         inc IX
             jp end
@@ -134,7 +140,7 @@ game = mdo
     welcome <- labelled mdo
         let title1 = "(C) 2024 Gergő Érdi"
             title2 = "https://gergo.erdi.hu/"
-            title3 = "With huge thanks to Péter Papp for help with debugging"
+            title3 = "   With huge thanks to Péter Papp for help with debugging"
 
         ld DE $ videoStart + 2
         ld HL titleData
@@ -166,9 +172,12 @@ game = mdo
                 call waitFrame
 
         printText [ ""
-                  , "  Welcome to Lunar Lander  "
+                  , "Welcome to Lunar Lander"
                   , ""
-                  , " Press SPACE to start game "
+                  , "LEFT/RIGHT arrow: horizontal thrusters"
+                  , "SPACE: vertical main thruster"
+                  , ""
+                  , "Press SPACE to start game"
                   , ""
                   ]
         jp waitSpace
@@ -200,9 +209,9 @@ game = mdo
             ld B C
 
         printText [ ""
-                  , "            Game Over"
+                  , "Game Over"
                   , ""
-                  , " Press SPACE to start new game"
+                  , "Press SPACE to start new game"
                   , ""
                   ]
 
