@@ -249,12 +249,12 @@ game = mdo
         inc DE
 
         textAddr <- printText
-          [ ""
-          , "Level XX "
-          , ""
-          , "Press SPACE when ready"
-          , ""
-          ]
+            [ ""
+            , "Level XX "
+            , ""
+            , "Press SPACE when ready"
+            , ""
+            ]
         jp waitSpace
 
     gameOver <- labelled mdo
@@ -276,12 +276,23 @@ game = mdo
             call waitFrame
             ld B C
 
-        printText [ ""
-                  , "Game Over"
-                  , ""
-                  , "Press SPACE to start new game"
-                  , ""
-                  ]
+        -- Render level number
+        ld DE $ textAddr + fromIntegral (length "\0Level ")
+        ld A [level]
+        call printBCD
+        ld A $ fromChar ' '
+        ld [DE] A
+        inc DE
+
+        textAddr <- printText
+            [ ""
+            , "Level XX "
+            , ""
+            , "Game Over"
+            , ""
+            , "Press SPACE to start new game"
+            , ""
+            ]
 
         -- Wait for SPACE key press
         jp waitSpace
