@@ -3,6 +3,8 @@ module LunarLander where
 import Z80
 import Z80.Utils
 import Z80.Machine.HomeLab.HL34
+import Z80.Machine.HomeLab.HL34.FromPng
+import qualified Data.ByteString as BS
 import Data.Word
 import Data.Bits
 import Control.Monad (forM_, replicateM_, unless)
@@ -10,14 +12,19 @@ import Data.Char (ord)
 import Control.Monad
 import LFSR
 
-game :: Z80ASM
-game = mdo
+game :: BS.ByteString -> Z80ASM
+game welcomePng = mdo
     di
     pageIO
 
     ldVia DE [terrainRNG] 0x0123
 
     call clearScreen
+    ld DE videoStart
+    ld HL welcomeScreen
+    ld BC videoSize
+    ldir
+
     call welcome
 
     loopForever do -- New game
@@ -202,39 +209,30 @@ game = mdo
         ld BC $ fromIntegral . length $ title3
         ldir
 
-        -- A bunch of random stars
-        ld DE 0x1234
-        ld HL videoStart
-        decLoopB 30 do
-            ld C B
-            decLoopB 2 $ withLabel \tryAgain -> do
-                call lfsr
+        let center s = replicate pad1 ' ' <> s <> replicate pad2 ' '
+              where
+                pad1 = (rowstride - length s) `div` 2
+                pad2 = rowstride - pad1
+        let instr1 = center ""
+            instr2 = center "LEFT/RIGHT arrow: horizontal thrusters"
+            instr3 = center "SPACE: vertical main thruster"
 
-                -- Don't overwrite the top two lines (i.e. if the top 9 bits are all 0)
-                ld A E
-                Z80.and 0b1000_0000
-                Z80.or D
-                jp Z tryAgain
+        ld HL instrData
+        ld DE $ videoStart + rowstride * (numLines - 3)
+        ld BC $ fromIntegral . length $ instr1
+        ldir
 
-                ld HL videoStart
-                add HL DE
-                ld [HL] $ fromIntegral . ord $ '*'
-            call waitFrame
-            ld B C
+        ld DE $ videoStart + rowstride * (numLines - 2)
+        ld BC $ fromIntegral . length $ instr2
+        ldir
 
-        printText [ ""
-                  , "Welcome to Lunar Lander"
-                  , ""
-                  , "LEFT/RIGHT arrow: horizontal thrusters"
-                  , "SPACE: vertical main thruster"
-                  , ""
-                  -- , "\x0a\& Horizontal controls: non-inverted \x0b\&"
-                  -- , ""
-                  , "Press SPACE to start game"
-                  , ""
-                  ]
+        ld DE $ videoStart + rowstride * (numLines - 1)
+        ld BC $ fromIntegral . length $ instr3
+        ldir
+
         jp waitSpace
         titleData <- labelled $ db $ concatMap (map fromChar) [title1, title2, title3]
+        instrData <- labelled $ db $ concatMap (map fromChar) [instr1, instr2, instr3]
         pure ()
 
     interstitial <- labelled mdo
@@ -721,6 +719,9 @@ game = mdo
     rightSprite2 <- labelled $ db $ concat rightSprite2_
     leftSprite1 <- labelled $ db $ concat leftSprite1_
     leftSprite2 <- labelled $ db $ concat leftSprite2_
+
+    let (_, _, welcomeBlocks) = encodeFromPng welcomePng
+    welcomeScreen <- labelled $ db $ welcomeBlocks
 
     drawLander <- labelled do
         let drawSprites sprite1 sprite2 = do

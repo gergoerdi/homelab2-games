@@ -29,7 +29,9 @@ main = do
     emit2 "_build/snake" $ org 20000 Snake.game
     emit2 "_build/hl2048" $ org 20000 HL2048.game
     -- emit "_build/trafficjam" $ org 20000 TrafficJam.game
-    emit4 "_build/lunar-lander" $ org 20000 LunarLander.game
+
+    lunarLanderPng <- BS.readFile ("data" </> "lunar-lander.png")
+    emit4 "_build/lunar-lander" $ org 20000 $ LunarLander.game lunarLanderPng
 
 emit2 :: String -> ASMBlock -> IO ()
 emit2 name block = do
