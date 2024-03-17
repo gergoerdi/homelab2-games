@@ -26,11 +26,15 @@ game = mdo
 
         skippable \endGame -> loopForever do -- Play level
             call initLevel
+
+            call interstitial
+
             call initTerrain
             call clearScreen
             call drawTerrain
 
             skippable \nextLevel -> loopForever do
+
                 ld HL frame
                 inc [HL]
 
@@ -75,6 +79,8 @@ game = mdo
 
     initLevel <- labelled do
         -- Increment [level] in BCD
+        scf
+        ccf
         ld A [level]
         inc A
         daa
@@ -103,13 +109,53 @@ game = mdo
 
         ret
 
+    -- | Pre: `DE` is the destination address
+    -- | Pre: `A` is the value to print
+    printBCD <- labelled do
+        ld B A
+        replicateM_ 4 $ srl A
+        unlessFlag Z do
+            add A $ fromIntegral . ord $ '0'
+            ld [DE] A
+            inc DE
+        ld A B
+        Z80.and 0x0f
+        add A $ fromIntegral . ord $ '0'
+        ld [DE] A
+        inc DE
+        ret
+
     let printText lines = mdo
             let height = fromIntegral $ length lines
                 width = 2 + (fromIntegral $ maximum . map length $ lines)
 
+            -- Window frame: top
+            ld IX $ videoStart + rowstride * ((numLines - height) `div` 2 - 1) + (rowstride - width) `div` 2 - 2
+            ld [IX] 0x8e
+            inc IX
+            ld A 0x92
+            decLoopB (fromIntegral width) do
+                ld [IX] A
+                inc IX
+            ld [IX] 0x8f
+
+            -- Window frame: bottom
+            ld IX $ videoStart + rowstride * ((numLines + height) `div` 2) + (rowstride - width) `div` 2 - 2
+            ld [IX] 0x90
+            inc IX
+            ld A 0x92
+            decLoopB (fromIntegral width) do
+                ld [IX] A
+                inc IX
+            ld [IX] 0x91
+            inc IX
+
             ld HL textData
             forM_ (zip [0..] lines) \(row, line) -> do
-                ld IX $ videoStart + rowstride * ((numLines - height) `div` 2 + row) + (rowstride - width) `div` 2
+                ld IX $ videoStart + rowstride * ((numLines - height) `div` 2 + row) + (rowstride - width) `div` 2 - 2
+                ld [IX] 0x93
+                inc IX
+
                 let padding = fromIntegral width - fromIntegral (length line)
                     padding1 = padding `div` 2
                     padding2 = padding - padding1
@@ -129,13 +175,14 @@ game = mdo
                     decLoopB padding2 $ do
                         ld [IX] 0x20
                         inc IX
+                ld [IX] 0x93
             jp end
 
             textData <- labelled $ db $ mconcat
-                [ bs <> [0x00] | line <- lines, let bs = map (fromIntegral .ord) line ]
+                [ bs <> [0x00] | line <- lines, let bs = map fromChar line ]
 
             end <- label
-            pure ()
+            pure textData
 
     welcome <- labelled mdo
         let title1 = "(C) 2024 Gergő Érdi"
@@ -181,17 +228,34 @@ game = mdo
                   , "LEFT/RIGHT arrow: horizontal thrusters"
                   , "SPACE: vertical main thruster"
                   , ""
+                  -- , "\x0a\& Horizontal controls: non-inverted \x0b\&"
+                  -- , ""
                   , "Press SPACE to start game"
                   , ""
                   ]
         jp waitSpace
-        let fromChar = \case
-                'ő' -> 0x7c
-                'é' -> 0x7b
-                'É' -> 0x5b
-                c -> fromIntegral . ord $ c
         titleData <- labelled $ db $ concatMap (map fromChar) [title1, title2, title3]
         pure ()
+
+    interstitial <- labelled mdo
+        call clearScreen
+
+        -- Render level number
+        ld DE $ textAddr + fromIntegral (length "\0Level ")
+        ld A [level]
+        call printBCD
+        ld A $ fromChar ' '
+        ld [DE] A
+        inc DE
+
+        textAddr <- printText
+          [ ""
+          , "Level XX "
+          , ""
+          , "Press SPACE when ready"
+          , ""
+          ]
+        jp waitSpace
 
     gameOver <- labelled mdo
         -- Doom-style game over transition
@@ -223,10 +287,21 @@ game = mdo
         jp waitSpace
 
     waitSpace <- labelled do
-        loopForever do
+        withLabel \loop -> do -- Wait for release
             ld A [0xe801]
             rra
-            ret NC
+            jp NC loop
+
+        withLabel \loop -> do -- Wait for press
+            ld A [0xe801]
+            rra
+            jp C loop
+
+        loopForever do -- Wait for release
+            ld A [0xe801]
+            rra
+            ret C
+        ret
 
     clearScreen <- labelled clearScreen_
     fuel <- labelled $ dw [0]
@@ -369,18 +444,8 @@ game = mdo
         ld DE $ hudDrawBuf + rowstride `div` 2
         print "LEVEL: "
 
-        ld A [level] -- It's in BCD
-        ld B A
-        replicateM_ 4 $ srl A
-        unlessFlag Z do
-            add A $ fromIntegral . ord $ '0'
-            ld [DE] A
-            inc DE
-        ld A B
-        Z80.and 0x0f
-        add A $ fromIntegral . ord $ '0'
-        ld [DE] A
-        inc DE
+        ld A [level]
+        call printBCD
 
         -- Speed hazard indicator
         call checkSpeed
@@ -809,6 +874,14 @@ clearScreen_ = do
             inc DE
         ld B C
     ret
+
+fromChar :: Char -> Word8
+fromChar = \case
+    'ő' -> 0x7c
+    'é' -> 0x7b
+    'É' -> 0x5b
+    c -> fromIntegral . ord $ c
+
 
 landerSprite_ :: [[Word8]]
 landerSprite_ =
