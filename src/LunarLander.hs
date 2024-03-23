@@ -27,6 +27,27 @@ game welcomePng = mdo
 
     call welcome
 
+    let keyboardToHL addr = skippable \end -> mdo
+            ld HL addr
+
+            ld IX fireDown
+            Z80.bit 0 [IX]
+            jp NZ soundOn
+            ld IX fireLeft
+            Z80.bit 0 [IX]
+            jp NZ soundOn
+            ld IX fireRight
+            Z80.bit 0 [IX]
+            jp NZ soundOn
+            jp end
+
+            soundOn <- label
+            ld IX frame
+            Z80.bit 1 [IX]
+            jp NZ end
+            ld HL $ addr .|. 0x80
+            pure ()
+
     loopForever do -- New game
         ldVia A [level] 0
         ldVia DE [maxFuel] 0xA000
@@ -66,8 +87,9 @@ game welcomePng = mdo
                 call drawLander
 
                 -- Wait for start of vblank
+                keyboardToHL 0xe802
                 withLabel \wait -> do
-                    ld A [0xe802]
+                    ld A [HL]
                     rra
                     jp NC wait
 
@@ -77,8 +99,9 @@ game welcomePng = mdo
                 jp NZ endGame
 
                 -- Wait for end of vblank
+                keyboardToHL 0xe802
                 withLabel \wait -> do
-                    ld A [0xe802]
+                    ld A [HL]
                     rra
                     jp C wait
 
@@ -648,7 +671,8 @@ game welcomePng = mdo
                 body
 
         -- Space: fire main thruster
-        ld A [0xe801]
+        keyboardToHL 0xe801
+        ld A [HL]
         rra
         unlessFlag C do
             useFuel 0x0020 do
@@ -658,7 +682,9 @@ game welcomePng = mdo
                 add HL DE
                 ld [landerVY] HL
 
-        ld A [0xe800]
+        -- Arrow keys
+        keyboardToHL 0xe800
+        ld A [HL]
 
         let checkKey body = skippable \notThis -> do
                 rra
